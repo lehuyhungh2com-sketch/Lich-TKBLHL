@@ -71,6 +71,19 @@
                 android:resource="@xml/widget_timetable_info" />
         </receiver>
 
+        <!-- Widget 4: 4-Day Weather Forecast + Live 2-Column Today's Timetable -->
+        <receiver
+            android:name=".widget.WeatherForecastTimetableWidgetReceiver"
+            android:exported="true"
+            android:label="Thời tiết 4 ngày &amp; TKB (THCS Lê Hữu Lập)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_weather_timetable_info" />
+        </receiver>
+
         <!-- Daily 06:00 AM Reminder, 05:45 AM Pre-Sync, and 10-min Period Reminder Receivers -->
         <receiver
             android:name=".notification.ReminderAlarmReceiver"

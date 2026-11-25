@@ -49,6 +49,7 @@ class LhlTimetableApp : Application() {
         NotificationHelper.createChannels(this)
         appScope.launch {
             ReminderAlarmReceiver.rescheduleFromLocal(this@LhlTimetableApp, this@LhlTimetableApp)
+            com.example.widget.WidgetUpdater.updateAllWidgets(this@LhlTimetableApp)
         }
     }
 }

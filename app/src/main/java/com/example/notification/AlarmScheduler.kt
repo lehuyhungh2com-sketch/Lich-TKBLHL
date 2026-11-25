@@ -20,6 +20,7 @@ object AlarmScheduler {
     const val ACTION_DAILY_REMINDER = "com.example.action.DAILY_REMINDER"
     const val ACTION_PRE_SYNC = "com.example.action.PRE_SYNC"
     const val ACTION_PERIOD_REMINDER = "com.example.action.PERIOD_REMINDER"
+    const val ACTION_WIDGET_PERIOD_TICK = "com.example.action.WIDGET_PERIOD_TICK"
 
     const val EXTRA_PERIOD_NUM = "extra_period_num"
     const val EXTRA_CLASS_NAME = "extra_class_name"
@@ -30,6 +31,7 @@ object AlarmScheduler {
     private const val REQ_DAILY_REMINDER = 1001
     private const val REQ_PRE_SYNC = 1002
     private const val REQ_PERIOD_BASE = 2000
+    private const val REQ_WIDGET_TICK_BASE = 3000
     private const val WORK_PERIODIC_SYNC = "lhl_periodic_background_sync"
 
     fun scheduleAll(
@@ -56,6 +58,7 @@ object AlarmScheduler {
             cancelTodayPeriodReminders(context)
         }
 
+        scheduleTodayWidgetPeriodTicks(context, todayPeriods)
         scheduleWorkManagerBackup(context)
     }
 
@@ -105,6 +108,41 @@ object AlarmScheduler {
     fun cancelTodayPeriodReminders(context: Context) {
         for (i in 0 until 12) {
             cancelAlarm(context, REQ_PERIOD_BASE + i, ACTION_PERIOD_REMINDER)
+        }
+    }
+
+    /**
+     * Schedules silent widget refresh ticks at the exact start and end times of today's
+     * teaching periods so live "Đang dạy" / "Tiếp theo" indicators update automatically.
+     */
+    fun scheduleTodayWidgetPeriodTicks(context: Context, todayPeriods: List<ResolvedPeriod>) {
+        for (i in 0 until 20) {
+            cancelAlarm(context, REQ_WIDGET_TICK_BASE + i, ACTION_WIDGET_PERIOD_TICK)
+        }
+        if (todayPeriods.isEmpty()) return
+
+        val nowMillis = System.currentTimeMillis()
+        val boundaryTimes = todayPeriods
+            .flatMap { listOf(it.startTime, it.endTime) }
+            .distinctBy { it.totalMinutes }
+            .sortedBy { it.totalMinutes }
+
+        var slotIdx = 0
+        boundaryTimes.forEach { t ->
+            if (slotIdx >= 20) return@forEach
+            val cal = Calendar.getInstance(VIETNAM_TZ).apply {
+                set(Calendar.HOUR_OF_DAY, t.hour)
+                set(Calendar.MINUTE, t.minute)
+                set(Calendar.SECOND, 3) // +3s so nowTime >= boundary cleanly
+                set(Calendar.MILLISECOND, 0)
+            }
+            if (cal.timeInMillis > nowMillis) {
+                val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+                    action = ACTION_WIDGET_PERIOD_TICK
+                }
+                setExactOrInexactAlarm(context, REQ_WIDGET_TICK_BASE + slotIdx, cal.timeInMillis, intent)
+                slotIdx++
+            }
         }
     }
 

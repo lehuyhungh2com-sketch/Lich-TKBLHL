@@ -25,8 +25,12 @@ data class WidgetPalette(
     val useLightText: Boolean,
     val isFullyTransparent: Boolean,
     val backgroundColor: Color,
+    val cardTileBackground: Color,
+    val liveNowBackground: Color,
+    val liveNowAccent: Color,
     val primaryText: Color,
     val secondaryText: Color,
+    val mutedPastText: Color,
     val pillBackground: Color,
     val pillText: Color,
     val scheduleContainer: Color,
@@ -42,11 +46,13 @@ data class WidgetRenderData(
     val greeting: String,
     val solarDateText: String,
     val lunarBadgeText: String,
+    val lunarShortText: String,
     val weekStrip: List<WeekStripDay>,
     val weather: WeatherSnapshot?,
     val weatherDesc: String,
     val weatherIconRes: Int,
     val forecasts3Days: List<DailyForecast>,
+    val forecasts4Days: List<DailyForecast>,
     val isLoggedIn: Boolean,
     val teacherName: String,
     val weekNumber: Int,
@@ -109,6 +115,7 @@ object WidgetDataBuilder {
 
         val palette = resolvePalette(
             context = context,
+            transparentMode = snapshot.preferences.widgetTransparentMode,
             opacity = snapshot.preferences.widgetOpacity,
             textTheme = snapshot.preferences.widgetTextTheme
         )
@@ -118,17 +125,21 @@ object WidgetDataBuilder {
             ?: "Chạm để cập nhật"
         val weatherIconRes = WeatherCodeMapper.widgetIconRes(weatherCode)
 
+        val lunarShort = "${todayLunar.day}/${todayLunar.month}${if (todayLunar.isLeap) "N" else ""} ÂL"
+
         return WidgetRenderData(
             today = today,
             now = now,
             greeting = now.greetingVietnamese(),
             solarDateText = today.formatFullVietnamese(),
             lunarBadgeText = todayLunar.formatBadge(),
+            lunarShortText = lunarShort,
             weekStrip = strip,
             weather = weather,
             weatherDesc = weatherDesc,
             weatherIconRes = weatherIconRes,
             forecasts3Days = weather?.dailyForecasts?.take(3).orEmpty(),
+            forecasts4Days = weather?.dailyForecasts?.take(4).orEmpty(),
             isLoggedIn = teacher != null,
             teacherName = teacher?.displayShortName.orEmpty(),
             weekNumber = snapshot.weekNumber,
@@ -142,40 +153,88 @@ object WidgetDataBuilder {
         )
     }
 
-    fun resolvePalette(
+    fun detectUseLightText(
         context: Context,
-        opacity: Float,
+        isFullyTransparent: Boolean,
         textTheme: WidgetTextTheme
-    ): WidgetPalette {
+    ): Boolean {
         val isNight = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
 
-        val useLightText = when (textTheme) {
+        return when (textTheme) {
             WidgetTextTheme.LIGHT -> true
             WidgetTextTheme.DARK -> false
-            WidgetTextTheme.AUTO -> isNight
+            WidgetTextTheme.AUTO -> {
+                if (isFullyTransparent) {
+                    val supportsDarkText = runCatching {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                            val wm = android.app.WallpaperManager.getInstance(context)
+                            val colors = wm.getWallpaperColors(android.app.WallpaperManager.FLAG_SYSTEM)
+                            if (colors != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                (colors.colorHints and android.app.WallpaperColors.HINT_SUPPORTS_DARK_TEXT) != 0
+                            } else if (colors != null) {
+                                // Estimate luminance from primary wallpaper color on API 27-30
+                                val primary = colors.primaryColor
+                                val luminance = 0.299f * primary.red() + 0.587f * primary.green() + 0.114f * primary.blue()
+                                luminance > 0.68f
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    }.getOrDefault(false)
+                    !supportsDarkText
+                } else {
+                    isNight
+                }
+            }
         }
+    }
 
+    fun resolvePalette(
+        context: Context,
+        transparentMode: Boolean,
+        opacity: Float,
+        textTheme: WidgetTextTheme
+    ): WidgetPalette {
         val clampedAlpha = opacity.coerceIn(0f, 1f)
-        val isFullyTransparent = clampedAlpha <= 0.02f
-        val bgBase = if (useLightText) Color(0xFF161A22) else Color(0xFFF3EFE8)
+        val isFullyTransparent = transparentMode || clampedAlpha <= 0.02f
+        val useLightText = detectUseLightText(context, isFullyTransparent, textTheme)
+        val bgBase = if (useLightText) Color(0xFF161A22) else Color(0xFFFFFCF7)
+        val tileBase = if (useLightText) Color(0xFF252C3A) else Color(0xFFF3EFE8)
         val scheduleBase = if (useLightText) Color(0xFF232936) else Color(0xFFE7E1D6)
+        val tileAlpha = (clampedAlpha * 0.92f).coerceIn(0f, 1f)
+        val liveTileAlpha = (clampedAlpha * 0.34f).coerceIn(0.18f, 0.34f)
 
         return WidgetPalette(
             useLightText = useLightText,
             isFullyTransparent = isFullyTransparent,
             backgroundColor = if (isFullyTransparent) Color.Transparent else bgBase.copy(alpha = clampedAlpha),
-            primaryText = if (useLightText) Color(0xFFF8FAFC) else Color(0xFF141923),
-            secondaryText = if (useLightText) Color(0xFFE2E8F0) else Color(0xFF334155),
+            cardTileBackground = if (isFullyTransparent) Color.Transparent else tileBase.copy(alpha = tileAlpha),
+            liveNowBackground = if (isFullyTransparent) {
+                Color.Transparent
+            } else {
+                if (useLightText) Color(0xFF10B981).copy(alpha = liveTileAlpha)
+                else Color(0xFF059669).copy(alpha = liveTileAlpha * 0.7f)
+            },
+            liveNowAccent = if (useLightText) Color(0xFF34D399) else Color(0xFF059669),
+            primaryText = if (useLightText) Color(0xFFFFFFFF) else Color(0xFF111827),
+            secondaryText = if (useLightText) Color(0xFFDDE5F0) else Color(0xFF334155),
+            mutedPastText = if (useLightText) Color(0x99CBD5E1) else Color(0x88475569),
             pillBackground = if (isFullyTransparent) {
-                if (useLightText) Color(0x661E293B) else Color(0xCC272D38)
+                Color.Transparent
             } else {
                 if (useLightText) Color(0xCC334155) else Color(0xFF272D38)
             },
-            pillText = Color(0xFFF8FAFC),
+            pillText = if (isFullyTransparent) {
+                if (useLightText) Color(0xFFFDBA74) else Color(0xFFC2410C)
+            } else {
+                Color(0xFFF8FAFC)
+            },
             scheduleContainer = if (isFullyTransparent) Color.Transparent else scheduleBase.copy(alpha = clampedAlpha * 0.85f),
-            dividerColor = if (useLightText) Color(0x44FFFFFF) else Color(0x33000000),
-            accentOrange = Color(0xFFF97316),
+            dividerColor = if (useLightText) Color(0x38FFFFFF) else Color(0x26000000),
+            accentOrange = if (useLightText) Color(0xFFFB923C) else Color(0xFFEA580C),
             sundayColor = if (useLightText) Color(0xFFF87171) else Color(0xFFDC2626),
             rainBlue = if (useLightText) Color(0xFF38BDF8) else Color(0xFF0284C7)
         )

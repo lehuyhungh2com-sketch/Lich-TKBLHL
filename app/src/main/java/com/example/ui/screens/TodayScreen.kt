@@ -326,19 +326,23 @@ fun TodayScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.Top
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = uiState.nowTime.formatHHmm(),
                                     style = MaterialTheme.typography.displayMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                                 Text(
                                     text = "${uiState.todayDate.formatFullVietnamese()}, ${uiState.todayDate.year}",
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
 
@@ -353,12 +357,16 @@ fun TodayScreen(
                                     Text(
                                         text = "${uiState.todayLunar.day}/${uiState.todayLunar.month}${if (uiState.todayLunar.isLeap) "N" else ""} Âm lịch",
                                         style = MaterialTheme.typography.labelLarge,
-                                        color = Color.White
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                     Text(
                                         text = "Năm ${uiState.todayLunar.canChiYear}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFFDBA74)
+                                        color = Color(0xFFFDBA74),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -366,29 +374,29 @@ fun TodayScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Full Can Chi line
+                        // Full Can Chi bar (3 equal columns — never collides or wraps mid-word)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text(
-                                text = "Ngày ${uiState.todayLunar.canChiDay}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            CanChiMiniCell(
+                                label = "Ngày",
+                                value = uiState.todayLunar.canChiDay,
+                                modifier = Modifier.weight(1f)
                             )
-                            Text(
-                                text = "Tháng ${uiState.todayLunar.canChiMonth}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            CanChiMiniCell(
+                                label = "Tháng",
+                                value = uiState.todayLunar.canChiMonth,
+                                modifier = Modifier.weight(1f)
                             )
-                            Text(
-                                text = "Giờ ${LunarCalendar.getHourCanChi(uiState.todayLunar.julianDay, uiState.nowTime.hour)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            CanChiMiniCell(
+                                label = "Giờ",
+                                value = LunarCalendar.getHourCanChi(uiState.todayLunar.julianDay, uiState.nowTime.hour),
+                                modifier = Modifier.weight(1f)
                             )
                         }
 
@@ -425,6 +433,35 @@ fun TodayScreen(
 
             item { Spacer(modifier = Modifier.height(8.dp)) }
         }
+    }
+}
+
+@Composable
+private fun CanChiMiniCell(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -510,26 +547,34 @@ private fun WeatherTodayCard(
             } else {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         WeatherIcon(
                             weatherCode = weather.weatherCode,
                             isDay = weather.isDay,
-                            size = 46.dp
+                            size = 42.dp
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
                                 text = "${weather.currentTemp}°C",
-                                style = MaterialTheme.typography.displayMedium,
-                                color = MaterialTheme.colorScheme.onSurface
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false
                             )
                             Text(
                                 text = WeatherCodeMapper.descriptionVietnamese(weather.weatherCode),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -539,7 +584,9 @@ private fun WeatherTodayCard(
                             text = "↑ ${weather.todayHigh}°  ↓ ${weather.todayLow}°",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            softWrap = false
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -552,7 +599,9 @@ private fun WeatherTodayCard(
                             Text(
                                 text = " Mưa ${weather.todayRainProb}% • Ẩm ${weather.humidity}%",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -563,9 +612,11 @@ private fun WeatherTodayCard(
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = " Gió ${weather.windSpeedKmh} km/h • Cảm giác ${weather.feelsLike}°",
+                                text = " Gió ${weather.windSpeedKmh} km/h",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -593,11 +644,13 @@ private fun WeatherTodayCard(
                                     Text(
                                         text = when (idx) {
                                             0 -> "H.NAY"
-                                            else -> f.date.forecastWeekdayLabel
+                                            else -> f.date.forecastShortLabel
                                         },
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     WeatherIcon(weatherCode = f.weatherCode, size = 24.dp)
@@ -605,13 +658,17 @@ private fun WeatherTodayCard(
                                     Text(
                                         text = "${f.precipitationProbability}%",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = SkyBlue
+                                        color = SkyBlue,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                     Text(
                                         text = "${f.tempMin}°/${f.tempMax}°",
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }

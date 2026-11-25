@@ -3,6 +3,7 @@
     <string name="widget_main_description">Đồng hồ, Lịch Âm-Dương, Thời tiết và Lịch dạy hôm nay (4x3 / 4x4)</string>
     <string name="widget_calendar_weather_description">Đồng hồ, Lịch Âm-Dương 7 ngày và Dự báo thời tiết</string>
     <string name="widget_timetable_description">Thời khóa biểu dạy học hôm nay (Sáng &amp; Chiều)</string>
+    <string name="widget_weather_timetable_description">Thời tiết 4 ngày, Ngày Âm-Dương và TKB 2 cột thời gian thực</string>
     <string name="notification_channel_daily_name">Nhắc lịch dạy hàng ngày</string>
     <string name="notification_channel_daily_desc">Thông báo tóm tắt lịch dạy lúc 06:00 sáng từ Thứ 2 đến Thứ 7</string>
     <string name="notification_channel_period_name">Nhắc trước tiết dạy</string>

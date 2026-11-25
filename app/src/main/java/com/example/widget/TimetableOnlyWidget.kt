@@ -3,6 +3,12 @@ package com.example.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
@@ -11,6 +17,7 @@ import androidx.glance.LocalContext
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
@@ -37,9 +44,19 @@ class TimetableOnlyWidgetReceiver : GlanceAppWidgetReceiver() {
 
 class TimetableOnlyWidget : GlanceAppWidget() {
 
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val data = WidgetDataBuilder.load(context)
+        val initialTick = WidgetUpdater.refreshTick.value
+        val initialData = WidgetDataBuilder.load(context)
         provideContent {
+            val tick by WidgetUpdater.refreshTick.collectAsState()
+            var data by remember { mutableStateOf(initialData) }
+            LaunchedEffect(tick) {
+                if (tick != initialTick) {
+                    data = WidgetDataBuilder.load(context)
+                }
+            }
             TimetableOnlyWidgetContent(data)
         }
     }
@@ -140,44 +157,57 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
             }
 
             else -> {
-                allPeriods.take(5).forEach { period ->
-                    val statusTag = when (period.liveStatus) {
-                        PeriodLiveStatus.TEACHING_NOW -> " • Đang dạy"
-                        PeriodLiveStatus.NEXT_PERIOD -> " • Tiếp theo"
-                        else -> ""
+                allPeriods.take(5).forEachIndexed { index, period ->
+                    if (index > 0) {
+                        androidx.glance.layout.Box(
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(palette.dividerColor)
+                        ) {}
                     }
-                    val sessionPrefix = if (period.isAfternoon) "C" else "S"
-                    val rowBg = if (period.liveStatus == PeriodLiveStatus.TEACHING_NOW ||
+                    val periodLabel = if (period.isAfternoon) "C${period.period}" else "T${period.period}"
+                    val classLabel = com.example.domain.model.TimetableCalculator.compactClassName(period.className)
+                    val isHighlighted = period.liveStatus == PeriodLiveStatus.TEACHING_NOW ||
                         period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
-                    ) {
-                        palette.scheduleContainer
-                    } else {
-                        palette.backgroundColor.copy(alpha = 0f)
-                    }
+
                     Row(
                         modifier = GlanceModifier
                             .fillMaxWidth()
-                            .cornerRadius(8.dp)
-                            .background(rowBg)
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = period.startTime.formatHHmm(),
+                            text = periodLabel,
                             style = TextStyle(
-                                color = ColorProvider(palette.accentOrange),
-                                fontSize = 11.sp,
+                                color = ColorProvider(
+                                    if (isHighlighted) palette.accentOrange else palette.secondaryText
+                                ),
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             ),
-                            maxLines = 1
+                            maxLines = 1,
+                            modifier = GlanceModifier.width(28.dp)
                         )
-                        Spacer(modifier = GlanceModifier.width(6.dp))
                         Text(
-                            text = "$sessionPrefix-T${period.period} ${com.example.domain.model.TimetableCalculator.compactClassName(period.className)} (${period.subjectShort})$statusTag",
+                            text = "$classLabel · ${period.subjectName}",
                             style = TextStyle(
                                 color = ColorProvider(palette.primaryText),
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            maxLines = 1,
+                            modifier = GlanceModifier.defaultWeight()
+                        )
+                        Spacer(modifier = GlanceModifier.width(6.dp))
+                        Text(
+                            text = period.startTime.formatHHmm(),
+                            style = TextStyle(
+                                color = ColorProvider(
+                                    if (isHighlighted) palette.accentOrange else palette.secondaryText
+                                ),
+                                fontSize = 11.sp,
+                                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Normal
                             ),
                             maxLines = 1
                         )

@@ -67,8 +67,12 @@ data class VnDate(
             4 -> "THỨ 5"
             5 -> "THỨ 6"
             6 -> "THỨ 7"
-            else -> "CHỦ NHẬT"
+            else -> "CN"
         }
+
+    /** Ultra-compact single-line forecast weekday label (T2..T7, CN) */
+    val forecastShortLabel: String
+        get() = shortDayCode
 
     /** Formatted as "Thứ Tư, 25 Thg 11" */
     fun formatFullVietnamese(): String = "$vietnameseWeekday, $day Thg $month"

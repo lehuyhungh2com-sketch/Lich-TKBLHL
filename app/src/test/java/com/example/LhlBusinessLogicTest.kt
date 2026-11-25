@@ -123,4 +123,15 @@ class LhlBusinessLogicTest {
         assertTrue(resolved[1].isAfternoon)
         assertEquals(PeriodLiveStatus.NEXT_PERIOD, resolved[1].liveStatus)
     }
+
+    @Test
+    fun readableSubjectName_formatsCleanVietnameseNames() {
+        assertEquals("Lịch sử", TimetableCalculator.readableSubjectName("sub-su", "LS&ĐL-SU", "LS&ĐL-SU"))
+        assertEquals("Địa lí", TimetableCalculator.readableSubjectName("sub-dia", "LS&ĐL-DIA", "LS&ĐL-DIA"))
+        assertEquals("Vật lí", TimetableCalculator.readableSubjectName("sub-khtn-ly", "KHTN-LY", "KHTN-LY"))
+        assertEquals("Hóa học", TimetableCalculator.readableSubjectName("sub-khtn-hoa", "KHTN-HOA", "KHTN-HOA"))
+        assertEquals("Sinh học", TimetableCalculator.readableSubjectName("sub-khtn-sinh", "KHTN-SINH", "KHTN-SINH"))
+        assertEquals("Tin học", TimetableCalculator.readableSubjectName("sub-tin", "Tin học", "Tin"))
+        assertEquals("7A2", TimetableCalculator.compactClassName("Lớp 7A2"))
+    }
 }

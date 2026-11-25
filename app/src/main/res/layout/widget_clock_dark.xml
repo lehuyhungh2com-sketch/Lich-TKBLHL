@@ -6,6 +6,7 @@
     android:format12Hour="HH:mm"
     android:format24Hour="HH:mm"
     android:includeFontPadding="false"
+    android:maxLines="1"
     android:textColor="#FF111827"
-    android:textSize="40sp"
+    android:textSize="28dp"
     android:textStyle="bold" />

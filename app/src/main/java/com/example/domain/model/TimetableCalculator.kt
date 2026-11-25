@@ -197,12 +197,13 @@ object TimetableCalculator {
                 config = schoolConfig.timeConfig
             )
 
-            val resolvedSubjectName = slot.customLabel?.takeIf { it.isNotBlank() }
-                ?: subject?.name
-                ?: slot.subjectId
-            val resolvedSubjectShort = slot.customLabel?.takeIf { it.isNotBlank() }
-                ?: subject?.shortLabel
-                ?: resolvedSubjectName
+            val resolvedSubjectName = readableSubjectName(
+                subjectId = slot.subjectId,
+                subjectName = subject?.name,
+                subjectCode = subject?.code,
+                customLabel = slot.customLabel
+            )
+            val resolvedSubjectShort = resolvedSubjectName
             val resolvedRoom = slot.room?.takeIf { it.isNotBlank() }
                 ?: schoolClass?.room.orEmpty()
 
@@ -263,6 +264,66 @@ object TimetableCalculator {
             trimmed.substring(4).trim().ifBlank { trimmed }
         } else {
             trimmed
+        }
+    }
+
+    /**
+     * Style 1 clean Vietnamese subject names (replaces technical codes like "LS&ĐL-SU", "KHTN-LY"):
+     */
+    fun readableSubjectName(
+        subjectId: String,
+        subjectName: String?,
+        subjectCode: String?,
+        customLabel: String? = null
+    ): String {
+        if (!customLabel.isNullOrBlank()) return customLabel.trim()
+
+        val rawCombined = listOfNotNull(subjectId, subjectCode, subjectName)
+            .joinToString(" ")
+            .lowercase()
+            .trim()
+
+        val codeOrId = listOfNotNull(subjectCode, subjectId)
+            .joinToString(" ")
+            .lowercase()
+
+        return when {
+            codeOrId.contains("chao-co") || rawCombined.contains("chào cờ") -> "Chào cờ"
+            codeOrId.contains("shl") || rawCombined.contains("sinh hoạt") -> "Sinh hoạt lớp"
+            codeOrId.contains("ls&đl-su") || codeOrId.contains("ls&dl-su") || codeOrId.contains("lsdl-su") ||
+                codeOrId.contains("sub-su") || codeOrId.endsWith("-su") ||
+                (rawCombined.contains("lịch sử") && !rawCombined.contains("địa")) ||
+                rawCombined.contains("(sử)") || rawCombined.contains("- sử") -> "Lịch sử"
+            codeOrId.contains("ls&đl-dia") || codeOrId.contains("ls&dl-dia") || codeOrId.contains("lsdl-dia") ||
+                codeOrId.contains("sub-dia") || codeOrId.endsWith("-dia") ||
+                (rawCombined.contains("địa lí") && !rawCombined.contains("lịch sử")) ||
+                (rawCombined.contains("địa lý") && !rawCombined.contains("lịch sử")) ||
+                rawCombined.contains("(địa)") || rawCombined.contains("- địa") -> "Địa lí"
+            codeOrId.contains("khtn-ly") || codeOrId.contains("khtn-lý") || codeOrId.contains("sub-ly") ||
+                rawCombined.contains("vật lí") || rawCombined.contains("vật lý") ||
+                rawCombined.contains("(lý)") || rawCombined.contains("(lí)") -> "Vật lí"
+            codeOrId.contains("khtn-hoa") || codeOrId.contains("khtn-hóa") || codeOrId.contains("sub-hoa") ||
+                rawCombined.contains("hóa học") || rawCombined.contains("hoá học") ||
+                rawCombined.contains("(hóa)") || rawCombined.contains("(hoá)") -> "Hóa học"
+            codeOrId.contains("khtn-sinh") || codeOrId.contains("sub-sinh") ||
+                rawCombined.contains("sinh học") || rawCombined.contains("(sinh)") -> "Sinh học"
+            codeOrId.contains("khtn") || rawCombined.contains("khoa học tự nhiên") -> "KHTN"
+            codeOrId.contains("ls&đl") || codeOrId.contains("ls&dl") || codeOrId.contains("lsdl") ||
+                (rawCombined.contains("lịch sử") && rawCombined.contains("địa")) -> "Lịch sử & Địa lí"
+            codeOrId.contains("toan") || rawCombined.contains("toán") -> "Toán"
+            codeOrId.contains("van") || rawCombined.contains("ngữ văn") -> "Ngữ văn"
+            codeOrId.contains("anh") || rawCombined.contains("tiếng anh") || rawCombined.contains("ngoại ngữ") -> "Tiếng Anh"
+            codeOrId.contains("tin") || rawCombined.contains("tin học") -> "Tin học"
+            codeOrId.contains("gdcd") || rawCombined.contains("giáo dục công dân") -> "GDCD"
+            codeOrId.contains("cong-nghe") || codeOrId.contains("công nghệ") || subjectCode.equals("CN", ignoreCase = true) -> "Công nghệ"
+            codeOrId.contains("gdtc") || rawCombined.contains("thể chất") || rawCombined.contains("thể dục") -> "GDTC"
+            codeOrId.contains("am-nhac") || rawCombined.contains("âm nhạc") || subjectCode.equals("AN", ignoreCase = true) -> "Âm nhạc"
+            codeOrId.contains("my-thuat") || rawCombined.contains("mỹ thuật") || rawCombined.contains("mĩ thuật") || subjectCode.equals("MT", ignoreCase = true) -> "Mỹ thuật"
+            codeOrId.contains("hdtn") || rawCombined.contains("hđtn") || rawCombined.contains("trải nghiệm") -> "HĐTN"
+            codeOrId.contains("gddp") || rawCombined.contains("gdđp") || rawCombined.contains("địa phương") -> "GDĐP"
+            !subjectName.isNullOrBlank() -> subjectName.trim()
+            !subjectCode.isNullOrBlank() -> subjectCode.trim()
+            else -> subjectId
         }
     }
 

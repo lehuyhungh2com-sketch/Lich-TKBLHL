@@ -51,6 +51,7 @@ data class UserPreferencesState(
     val lastLongitude: Double = DEFAULT_LON,
     val lastLocationName: String = DEFAULT_LOCATION_NAME,
     val appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val widgetTransparentMode: Boolean = true,
     val widgetOpacity: Float = 0.0f,
     val widgetTextTheme: WidgetTextTheme = WidgetTextTheme.AUTO
 ) {
@@ -78,6 +79,7 @@ class AppPreferences(private val context: Context) {
         val LAST_LON = doublePreferencesKey("last_longitude")
         val LAST_LOC_NAME = stringPreferencesKey("last_location_name")
         val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
+        val WIDGET_TRANSPARENT_MODE = booleanPreferencesKey("widget_transparent_mode")
         val WIDGET_OPACITY = floatPreferencesKey("widget_opacity")
         val WIDGET_TEXT_THEME = stringPreferencesKey("widget_text_theme")
     }
@@ -96,6 +98,7 @@ class AppPreferences(private val context: Context) {
             lastLongitude = prefs[Keys.LAST_LON] ?: UserPreferencesState.DEFAULT_LON,
             lastLocationName = prefs[Keys.LAST_LOC_NAME] ?: UserPreferencesState.DEFAULT_LOCATION_NAME,
             appThemeMode = AppThemeMode.fromKey(prefs[Keys.APP_THEME_MODE]),
+            widgetTransparentMode = prefs[Keys.WIDGET_TRANSPARENT_MODE] ?: true,
             widgetOpacity = prefs[Keys.WIDGET_OPACITY] ?: 0.0f,
             widgetTextTheme = WidgetTextTheme.fromKey(prefs[Keys.WIDGET_TEXT_THEME] ?: WidgetTextTheme.AUTO.key)
         )
@@ -164,8 +167,13 @@ class AppPreferences(private val context: Context) {
         }
     }
 
-    suspend fun setWidgetAppearance(opacity: Float, textTheme: WidgetTextTheme) {
+    suspend fun setWidgetAppearance(
+        transparentMode: Boolean,
+        opacity: Float,
+        textTheme: WidgetTextTheme
+    ) {
         context.dataStore.edit { prefs ->
+            prefs[Keys.WIDGET_TRANSPARENT_MODE] = transparentMode
             prefs[Keys.WIDGET_OPACITY] = opacity.coerceIn(0f, 1f)
             prefs[Keys.WIDGET_TEXT_THEME] = textTheme.key
         }

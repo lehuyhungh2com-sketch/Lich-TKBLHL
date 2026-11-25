@@ -386,10 +386,13 @@ private fun DayScheduleCard(
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = if (isToday) SunsetOrangeBright else MaterialTheme.colorScheme.surfaceVariant
@@ -398,6 +401,8 @@ private fun DayScheduleCard(
                             text = dayCode,
                             style = MaterialTheme.typography.labelLarge,
                             color = if (isToday) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                         )
                     }
@@ -406,7 +411,9 @@ private fun DayScheduleCard(
                         Text(
                             text = "${date.vietnameseWeekday}, ${date.formatDayMonth()}",
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         if (isToday) {
                             Text(
@@ -422,7 +429,9 @@ private fun DayScheduleCard(
                     text = if (periods.isEmpty()) "Nghỉ" else "${periods.size} tiết",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (periods.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
@@ -614,7 +623,7 @@ private fun MatrixCard(
                                 if (match != null) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text(
-                                            text = if (showTeacher) match.subjectShort else TimetableCalculator.compactClassName(match.className),
+                                            text = if (showTeacher) match.subjectName else TimetableCalculator.compactClassName(match.className),
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface,
@@ -622,7 +631,7 @@ private fun MatrixCard(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = if (showTeacher) match.teacherShortName else match.subjectShort,
+                                            text = if (showTeacher) match.teacherShortName else match.subjectName,
                                             fontSize = 10.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,

@@ -51,6 +51,11 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                             startTimeText = startTime,
                             room = room
                         )
+                        WidgetUpdater.updateAllWidgets(context)
+                    }
+
+                    AlarmScheduler.ACTION_WIDGET_PERIOD_TICK -> {
+                        WidgetUpdater.updateAllWidgets(context)
                     }
                 }
             } finally {

@@ -43,6 +43,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +60,7 @@ import com.example.data.local.WidgetTextTheme
 import com.example.domain.lunar.VnTime
 import com.example.domain.model.TimetableCalculator
 import com.example.ui.MainUiState
+import com.example.ui.components.LiveWeatherTimetablePreviewCard
 import com.example.ui.components.LiveWidgetPreviewCard
 import com.example.ui.components.SegmentOption
 import com.example.ui.components.SegmentedOptionBar
@@ -71,7 +78,7 @@ fun SettingsScreen(
     onTogglePeriodReminder: (Boolean) -> Unit,
     onSendTestNotification: () -> Unit,
     onToggleGpsLocation: (Boolean) -> Unit,
-    onUpdateWidgetAppearance: (Float, WidgetTextTheme) -> Unit,
+    onUpdateWidgetAppearance: (Boolean, Float, WidgetTextTheme) -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -401,37 +408,100 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. HOME SCREEN WIDGET CUSTOMIZATION + LIVE PREVIEW (No clutter notes)
+            // 5. HOME SCREEN WIDGET CUSTOMIZATION + LIVE PREVIEW (Option A)
             item {
+                val persistedOpacity = if (prefs.widgetTransparentMode) 0f else prefs.widgetOpacity.coerceIn(0f, 1f)
+                var liveOpacity by remember { mutableFloatStateOf(persistedOpacity) }
+                var previewWidgetTab by remember { mutableIntStateOf(1) } // 0 = Đồng hồ & TKB, 1 = Thời tiết 4 ngày & TKB
+                LaunchedEffect(prefs.widgetTransparentMode, prefs.widgetOpacity) {
+                    liveOpacity = if (prefs.widgetTransparentMode) 0f else prefs.widgetOpacity.coerceIn(0f, 1f)
+                }
+                val liveIsTransparent = liveOpacity <= 0.02f
+
                 SettingsSectionCard(
                     icon = Icons.Rounded.Widgets,
                     title = "Widget màn hình chính"
                 ) {
-                    LiveWidgetPreviewCard(
-                        today = uiState.todayDate,
-                        now = uiState.nowTime,
-                        weather = uiState.weather,
-                        todayPeriods = todayAllPeriods,
-                        weekNumber = uiState.currentWeekNumber,
-                        opacity = prefs.widgetOpacity,
-                        textTheme = prefs.widgetTextTheme
+                    SegmentedOptionBar(
+                        options = listOf(
+                            SegmentOption(0, "Đồng hồ & TKB", "preview_widget_clock"),
+                            SegmentOption(1, "Thời tiết 4 ngày & TKB", "preview_widget_weather")
+                        ),
+                        selected = previewWidgetTab,
+                        onSelect = { previewWidgetTab = it }
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (previewWidgetTab == 0) {
+                        LiveWidgetPreviewCard(
+                            today = uiState.todayDate,
+                            now = uiState.nowTime,
+                            weather = uiState.weather,
+                            todayPeriods = todayAllPeriods,
+                            weekNumber = uiState.currentWeekNumber,
+                            transparentMode = liveIsTransparent,
+                            opacity = liveOpacity,
+                            textTheme = prefs.widgetTextTheme
+                        )
+                    } else {
+                        LiveWeatherTimetablePreviewCard(
+                            today = uiState.todayDate,
+                            weather = uiState.weather,
+                            todayPeriods = todayAllPeriods,
+                            weekNumber = uiState.currentWeekNumber,
+                            transparentMode = liveIsTransparent,
+                            opacity = liveOpacity,
+                            textTheme = prefs.widgetTextTheme
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Trong suốt hoàn toàn",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = "Khử toàn bộ khung nền, hòa vào hình nền máy",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = liveIsTransparent,
+                            onCheckedChange = { transparent ->
+                                val nextOpacity = if (transparent) 0f else 0.55f
+                                liveOpacity = nextOpacity
+                                onUpdateWidgetAppearance(transparent, nextOpacity, prefs.widgetTextTheme)
+                            },
+                            modifier = Modifier.testTag("switch_widget_transparent")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "Độ mờ nền Widget",
                             style = MaterialTheme.typography.titleSmall
                         )
                         Text(
-                            text = if (prefs.widgetOpacity <= 0.02f) {
-                                "Trong suốt 100%"
+                            text = if (liveIsTransparent) {
+                                "0% (Trong suốt)"
                             } else {
-                                "${(prefs.widgetOpacity * 100).roundToInt()}%"
+                                "${(liveOpacity * 100).roundToInt()}%"
                             },
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
@@ -439,13 +509,19 @@ fun SettingsScreen(
                     }
 
                     Slider(
-                        value = prefs.widgetOpacity,
+                        value = liveOpacity,
                         onValueChange = { newOpacity ->
-                            onUpdateWidgetAppearance(newOpacity, prefs.widgetTextTheme)
+                            liveOpacity = if (newOpacity <= 0.03f) 0f else newOpacity
+                        },
+                        onValueChangeFinished = {
+                            val isTrans = liveOpacity <= 0.02f
+                            onUpdateWidgetAppearance(isTrans, if (isTrans) 0f else liveOpacity, prefs.widgetTextTheme)
                         },
                         valueRange = 0f..1f,
                         modifier = Modifier.testTag("widget_opacity_slider")
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
                         text = "Màu chữ Widget",
@@ -458,7 +534,10 @@ fun SettingsScreen(
                             SegmentOption(it, it.label, "widget_theme_${it.key}")
                         },
                         selected = prefs.widgetTextTheme,
-                        onSelect = { onUpdateWidgetAppearance(prefs.widgetOpacity, it) }
+                        onSelect = {
+                            val isTrans = liveOpacity <= 0.02f
+                            onUpdateWidgetAppearance(isTrans, if (isTrans) 0f else liveOpacity, it)
+                        }
                     )
                 }
             }

@@ -4,6 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
@@ -15,6 +21,7 @@ import androidx.glance.action.clickable
 import androidx.glance.appwidget.AndroidRemoteViews
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
@@ -30,6 +37,7 @@ import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
 import androidx.glance.layout.width
+import androidx.glance.layout.wrapContentSize
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
@@ -45,9 +53,19 @@ class CalendarWeatherWidgetReceiver : GlanceAppWidgetReceiver() {
 
 class CalendarWeatherWidget : GlanceAppWidget() {
 
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val data = WidgetDataBuilder.load(context)
+        val initialTick = WidgetUpdater.refreshTick.value
+        val initialData = WidgetDataBuilder.load(context)
         provideContent {
+            val tick by WidgetUpdater.refreshTick.collectAsState()
+            var data by remember { mutableStateOf(initialData) }
+            LaunchedEffect(tick) {
+                if (tick != initialTick) {
+                    data = WidgetDataBuilder.load(context)
+                }
+            }
             CalendarWeatherWidgetContent(data)
         }
     }
@@ -95,10 +113,17 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                 } else {
                     R.layout.widget_clock_dark
                 }
-                AndroidRemoteViews(
-                    remoteViews = RemoteViews(context.packageName, clockLayout),
-                    modifier = GlanceModifier.padding(vertical = 1.dp)
-                )
+                Box(
+                    modifier = GlanceModifier
+                        .fillMaxWidth()
+                        .height(36.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    AndroidRemoteViews(
+                        remoteViews = RemoteViews(context.packageName, clockLayout),
+                        modifier = GlanceModifier.wrapContentSize()
+                    )
+                }
                 Text(
                     text = data.solarDateText,
                     style = TextStyle(
@@ -109,12 +134,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                     maxLines = 1
                 )
                 Spacer(modifier = GlanceModifier.height(4.dp))
-                Box(
-                    modifier = GlanceModifier
-                        .cornerRadius(12.dp)
-                        .background(palette.pillBackground)
-                        .padding(horizontal = 9.dp, vertical = 3.dp)
-                ) {
+                if (palette.isFullyTransparent) {
                     Text(
                         text = data.lunarBadgeText,
                         style = TextStyle(
@@ -124,6 +144,23 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                         ),
                         maxLines = 1
                     )
+                } else {
+                    Box(
+                        modifier = GlanceModifier
+                            .cornerRadius(12.dp)
+                            .background(palette.pillBackground)
+                            .padding(horizontal = 9.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = data.lunarBadgeText,
+                            style = TextStyle(
+                                color = ColorProvider(palette.pillText),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 

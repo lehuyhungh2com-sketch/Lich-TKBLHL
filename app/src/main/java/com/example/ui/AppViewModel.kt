@@ -24,6 +24,7 @@ import com.example.notification.NotificationHelper
 import com.example.notification.ReminderAlarmReceiver
 import com.example.widget.WidgetUpdater
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -96,6 +97,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val clockTickFlow = MutableStateFlow(VnDate.today() to VnTime.now())
     private val selectedWeekOverride = MutableStateFlow<Int?>(null)
     private val transientStatus = MutableStateFlow(TransientStatus())
+    private var widgetUpdateJob: Job? = null
 
     private val catalogFlow = combine(
         schoolRepo.schoolConfigFlow,
@@ -427,9 +429,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateWidgetAppearance(opacity: Float, textTheme: WidgetTextTheme) {
-        viewModelScope.launch {
-            prefsRepo.setWidgetAppearance(opacity, textTheme)
+    fun updateWidgetAppearance(
+        transparentMode: Boolean,
+        opacity: Float,
+        textTheme: WidgetTextTheme
+    ) {
+        widgetUpdateJob?.cancel()
+        widgetUpdateJob = viewModelScope.launch {
+            val isTransparent = transparentMode || opacity <= 0.02f
+            val normalizedOpacity = if (isTransparent) 0f else opacity.coerceIn(0.05f, 1f)
+            prefsRepo.setWidgetAppearance(isTransparent, normalizedOpacity, textTheme)
             WidgetUpdater.updateAllWidgets(app)
         }
     }
