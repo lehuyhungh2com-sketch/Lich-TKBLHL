@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Calendar body inside 66dp safe zone (21..87) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,31h48c3.31,0 6,2.69 6,6v37c0,3.31 -2.69,6 -6,6H30c-3.31,0 -6,-2.69 -6,-6V37C24,33.69 26.69,31 30,31z" />
+    <!-- Top calendar header bar -->
+    <path
+        android:fillColor="#FF1E293B"
+        android:pathData="M30,31h48c3.31,0 6,2.69 6,6v9H24v-9C24,33.69 26.69,31 30,31z" />
+    <!-- Calendar binder rings -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M37,25h5c1.1,0 2,0.9 2,2v8c0,1.1 -0.9,2 -2,2h-5c-1.1,0 -2,-0.9 -2,-2v-8C35,25.9 35.9,25 37,25z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M66,25h5c1.1,0 2,0.9 2,2v8c0,1.1 -0.9,2 -2,2h-5c-1.1,0 -2,-0.9 -2,-2v-8C64,25.9 64.9,25 66,25z" />
+    <!-- Timetable grid bars -->
+    <path
+        android:fillColor="#FFEA580C"
+        android:pathData="M31,52h17c1.1,0 2,0.9 2,2v4c0,1.1 -0.9,2 -2,2H31c-1.1,0 -2,-0.9 -2,-2v-4C29,52.9 29.9,52 31,52z" />
+    <path
+        android:fillColor="#FFFDBA74"
+        android:pathData="M54,52h22c1.1,0 2,0.9 2,2v4c0,1.1 -0.9,2 -2,2H54c-1.1,0 -2,-0.9 -2,-2v-4C52,52.9 52.9,52 54,52z" />
+    <path
+        android:fillColor="#FFFDBA74"
+        android:pathData="M31,64h26c1.1,0 2,0.9 2,2v4c0,1.1 -0.9,2 -2,2H31c-1.1,0 -2,-0.9 -2,-2v-4C29,64.9 29.9,64 31,64z" />
+    <!-- Golden sun/clock accent badge at bottom right -->
+    <path
+        android:fillColor="#FFF59E0B"
+        android:pathData="M71,61m-11,0a11,11 0,1 1,22 0a11,11 0,1 1,-22 0" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M71,55c0.83,0 1.5,0.67 1.5,1.5v4.2l3.1,1.8c0.72,0.42 0.96,1.34 0.54,2.05 -0.42,0.72 -1.34,0.96 -2.05,0.54l-3.84,-2.22C69.78,62.6 69.5,62.1 69.5,61.55V56.5C69.5,55.67 70.17,55 71,55z" />
+</vector>

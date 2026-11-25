@@ -1,0 +1,189 @@
+package com.example.notification
+
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.example.domain.lunar.VIETNAM_TZ
+import com.example.domain.model.ResolvedPeriod
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
+
+object AlarmScheduler {
+
+    const val ACTION_DAILY_REMINDER = "com.example.action.DAILY_REMINDER"
+    const val ACTION_PRE_SYNC = "com.example.action.PRE_SYNC"
+    const val ACTION_PERIOD_REMINDER = "com.example.action.PERIOD_REMINDER"
+
+    const val EXTRA_PERIOD_NUM = "extra_period_num"
+    const val EXTRA_CLASS_NAME = "extra_class_name"
+    const val EXTRA_SUBJECT_NAME = "extra_subject_name"
+    const val EXTRA_START_TIME = "extra_start_time"
+    const val EXTRA_ROOM = "extra_room"
+
+    private const val REQ_DAILY_REMINDER = 1001
+    private const val REQ_PRE_SYNC = 1002
+    private const val REQ_PERIOD_BASE = 2000
+    private const val WORK_PERIODIC_SYNC = "lhl_periodic_background_sync"
+
+    fun scheduleAll(
+        context: Context,
+        dailyReminderEnabled: Boolean,
+        reminderHour: Int,
+        reminderMinute: Int,
+        periodReminderEnabled: Boolean,
+        todayPeriods: List<ResolvedPeriod>
+    ) {
+        if (dailyReminderEnabled) {
+            scheduleDailyReminder(context, reminderHour, reminderMinute)
+            // Pre-sync 15 minutes before reminder (e.g., 05:45 AM for 06:00 AM reminder)
+            val preMinutesTotal = ((reminderHour * 60 + reminderMinute) - 15 + 24 * 60) % (24 * 60)
+            schedulePreSyncAlarm(context, preMinutesTotal / 60, preMinutesTotal % 60)
+        } else {
+            cancelAlarm(context, REQ_DAILY_REMINDER, ACTION_DAILY_REMINDER)
+            schedulePreSyncAlarm(context, 5, 45)
+        }
+
+        if (periodReminderEnabled) {
+            scheduleTodayPeriodReminders(context, todayPeriods)
+        } else {
+            cancelTodayPeriodReminders(context)
+        }
+
+        scheduleWorkManagerBackup(context)
+    }
+
+    fun scheduleDailyReminder(context: Context, hour: Int, minute: Int) {
+        val triggerAt = nextTriggerMillis(hour, minute)
+        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            action = ACTION_DAILY_REMINDER
+        }
+        setExactOrInexactAlarm(context, REQ_DAILY_REMINDER, triggerAt, intent)
+    }
+
+    fun schedulePreSyncAlarm(context: Context, hour: Int, minute: Int) {
+        val triggerAt = nextTriggerMillis(hour, minute)
+        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            action = ACTION_PRE_SYNC
+        }
+        setExactOrInexactAlarm(context, REQ_PRE_SYNC, triggerAt, intent)
+    }
+
+    fun scheduleTodayPeriodReminders(context: Context, todayPeriods: List<ResolvedPeriod>) {
+        cancelTodayPeriodReminders(context)
+        val nowMillis = System.currentTimeMillis()
+
+        todayPeriods.forEachIndexed { idx, period ->
+            if (idx >= 12) return@forEachIndexed
+            val notifyTime = period.startTime.plusMinutes(-10)
+            val cal = Calendar.getInstance(VIETNAM_TZ).apply {
+                set(Calendar.HOUR_OF_DAY, notifyTime.hour)
+                set(Calendar.MINUTE, notifyTime.minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            if (cal.timeInMillis > nowMillis) {
+                val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+                    action = ACTION_PERIOD_REMINDER
+                    putExtra(EXTRA_PERIOD_NUM, period.period)
+                    putExtra(EXTRA_CLASS_NAME, period.className)
+                    putExtra(EXTRA_SUBJECT_NAME, period.subjectName)
+                    putExtra(EXTRA_START_TIME, period.startTime.formatHHmm())
+                    putExtra(EXTRA_ROOM, period.room)
+                }
+                setExactOrInexactAlarm(context, REQ_PERIOD_BASE + idx, cal.timeInMillis, intent)
+            }
+        }
+    }
+
+    fun cancelTodayPeriodReminders(context: Context) {
+        for (i in 0 until 12) {
+            cancelAlarm(context, REQ_PERIOD_BASE + i, ACTION_PERIOD_REMINDER)
+        }
+    }
+
+    private fun scheduleWorkManagerBackup(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val request = PeriodicWorkRequestBuilder<DailySyncWorker>(6, TimeUnit.HOURS)
+            .setConstraints(constraints)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            WORK_PERIODIC_SYNC,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    private fun nextTriggerMillis(hour: Int, minute: Int): Long {
+        val now = Calendar.getInstance(VIETNAM_TZ)
+        val target = Calendar.getInstance(VIETNAM_TZ).apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        if (target.timeInMillis <= now.timeInMillis + 5_000L) {
+            target.add(Calendar.DAY_OF_MONTH, 1)
+        }
+        return target.timeInMillis
+    }
+
+    private fun setExactOrInexactAlarm(
+        context: Context,
+        requestCode: Int,
+        triggerAtMillis: Long,
+        intent: Intent
+    ) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            true
+        }
+
+        runCatching {
+            if (canExact) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            }
+        }
+    }
+
+    private fun cancelAlarm(context: Context, requestCode: Int, action: String) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            this.action = action
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.cancel(pendingIntent)
+    }
+}

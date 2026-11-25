@@ -1,0 +1,6 @@
+{
+  "name": "Lịch & TKB THCS Lê Hữu Lập",
+  "description": "Ứng dụng Lịch Âm-Dương, Thời tiết, Widget màn hình chính và Thời khóa biểu cá nhân (chỉ đọc từ Firestore) dành cho giáo viên Trường THCS Lê Hữu Lập, Hậu Lộc, Thanh Hóa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

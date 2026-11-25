@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "459050533239",
+    "project_id": "tkbthcslhl-2026",
+    "storage_bucket": "tkbthcslhl-2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:459050533239:android:4bc43b29d4cae3174be172",
+        "android_client_info": {
+          "package_name": "com.aistudio.tkblhl.vn26ab"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7QgWSqzrJV3sYtHbvxHPFi0kSyexhRQc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
