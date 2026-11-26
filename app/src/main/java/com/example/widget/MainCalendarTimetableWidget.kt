@@ -26,6 +26,7 @@ import androidx.glance.appwidget.AndroidRemoteViews
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
@@ -50,8 +51,8 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.example.MainActivity
 import com.example.R
+import com.example.domain.model.PeriodLiveStatus
 import com.example.domain.model.ResolvedPeriod
-import com.example.domain.model.TimetableCalculator
 
 class MainCalendarTimetableWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = MainCalendarTimetableWidget()
@@ -77,18 +78,13 @@ class MainCalendarTimetableWidget : GlanceAppWidget() {
     }
 }
 
-/**
- * Option A: Clean 2-column Samsung Weather style with full SizeMode.Exact resize adaptation.
- * - Zero background box when transparentMode == true (pure floating typography over wallpaper).
- * - Custom translucent rounded card when transparentMode == false (opacity 1%..100%).
- * - Bounded Box around AndroidRemoteViews (TextClock) so Date, Lunar, and Weather always render cleanly below.
- * - Adapts seamlessly between compact/narrow (1-column) and standard/wide (2-column) widget sizes.
- */
 @Composable
 private fun MainWidgetContent(data: WidgetRenderData) {
     val context = LocalContext.current
     val size = LocalSize.current
     val palette = data.palette
+    val delta = data.fontDeltaSp
+    val radius = data.cornerRadiusDp.dp
 
     val openTodayAction = actionStartActivity(
         Intent(context, MainActivity::class.java).apply {
@@ -107,7 +103,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
     val rootBgModifier = if (palette.isFullyTransparent) {
         GlanceModifier
     } else {
-        GlanceModifier.cornerRadius(22.dp).background(palette.backgroundColor)
+        GlanceModifier.cornerRadius(radius).background(palette.backgroundColor)
     }
 
     val isNarrow = size.width > 0.dp && size.width < 220.dp
@@ -131,7 +127,6 @@ private fun MainWidgetContent(data: WidgetRenderData) {
     val outerPaddingV = if (palette.isFullyTransparent) 6.dp else 12.dp
 
     if (isNarrow) {
-        // Compact 1-column layout when resized narrow (2x2 / 2x3 / 3x2)
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
@@ -152,7 +147,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                         text = "${data.today.vietnameseWeekday}, ${data.today.formatDayMonth()}",
                         style = TextStyle(
                             color = ColorProvider(palette.primaryText),
-                            fontSize = 11.sp,
+                            fontSize = (11f + delta * 0.5f).coerceAtLeast(10f).sp,
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
@@ -210,7 +205,6 @@ private fun MainWidgetContent(data: WidgetRenderData) {
             )
         }
     } else {
-        // Standard & Wide 2-column Samsung Weather style
         val leftColWidth = if (size.width > 0.dp) {
             (size.width * 0.37f).coerceIn(112.dp, 146.dp)
         } else {
@@ -225,7 +219,6 @@ private fun MainWidgetContent(data: WidgetRenderData) {
             verticalAlignment = Alignment.Top
         ) {
             // LEFT COLUMN: Live Clock + Solar/Lunar + Compact Weather
-            // NOTE: wrapContentHeight() (NOT fillMaxHeight) ensures AndroidRemoteViews never swallows sibling space!
             Column(
                 modifier = GlanceModifier
                     .width(leftColWidth)
@@ -240,7 +233,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                     text = "${data.today.vietnameseWeekday}, ${data.today.formatDayMonth()}",
                     style = TextStyle(
                         color = ColorProvider(palette.primaryText),
-                        fontSize = 12.sp,
+                        fontSize = (12f + delta * 0.5f).coerceAtLeast(10.5f).sp,
                         fontWeight = FontWeight.Medium
                     ),
                     maxLines = 1
@@ -279,7 +272,6 @@ private fun MainWidgetContent(data: WidgetRenderData) {
 
                 Spacer(modifier = GlanceModifier.height(if (isShort) 6.dp else 10.dp))
 
-                // Weather Block
                 Row(
                     modifier = GlanceModifier.wrapContentHeight(),
                     verticalAlignment = Alignment.CenterVertically
@@ -332,7 +324,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
 
             Spacer(modifier = GlanceModifier.width(10.dp))
 
-            // RIGHT COLUMN: Clean Aligned Timetable Rows Separated by Hairline Dividers
+            // RIGHT COLUMN: Real-Time Highlighted Timetable Rows + Refresh Button
             TimetableColumn(
                 data = data,
                 palette = palette,
@@ -379,25 +371,62 @@ private fun TimetableColumn(
     onClickAction: Action,
     modifier: GlanceModifier = GlanceModifier
 ) {
+    val delta = data.fontDeltaSp
+    val liveBadge = data.liveStatusBadgeText()
+
     Column(
         modifier = modifier.clickable(onClickAction),
         horizontalAlignment = Alignment.Start,
         verticalAlignment = Alignment.Top
     ) {
-        val headerTitle = when {
-            !data.isLoggedIn -> "Thời khóa biểu"
-            data.isSundayPreview -> "Thứ Hai · Tuần ${data.weekNumber}"
-            else -> "Lịch dạy · Tuần ${data.weekNumber}"
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val headerTitle = when {
+                !data.isLoggedIn -> "Thời khóa biểu"
+                data.isSundayPreview -> "Thứ Hai · Tuần ${data.weekNumber}"
+                else -> "Lịch dạy · Tuần ${data.weekNumber}"
+            }
+            Text(
+                text = headerTitle,
+                style = TextStyle(
+                    color = ColorProvider(palette.accentOrange),
+                    fontSize = (11f + delta * 0.5f).coerceAtLeast(10f).sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                maxLines = 1,
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Box(
+                modifier = GlanceModifier
+                    .size(22.dp)
+                    .cornerRadius(11.dp)
+                    .clickable(actionRunCallback<RefreshWeatherTimetableAction>()),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    provider = ImageProvider(
+                        if (palette.useLightText) R.drawable.ic_widget_refresh_light
+                        else R.drawable.ic_widget_refresh_dark
+                    ),
+                    contentDescription = "Làm mới",
+                    modifier = GlanceModifier.size(13.dp)
+                )
+            }
         }
-        Text(
-            text = headerTitle,
-            style = TextStyle(
-                color = ColorProvider(palette.accentOrange),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            ),
-            maxLines = 1
-        )
+
+        if (liveBadge != null) {
+            Text(
+                text = liveBadge.first,
+                style = TextStyle(
+                    color = ColorProvider(liveBadge.second),
+                    fontSize = (9.5f + delta * 0.4f).coerceAtLeast(9f).sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                maxLines = 1
+            )
+        }
 
         Spacer(modifier = GlanceModifier.height(4.dp))
 
@@ -434,6 +463,7 @@ private fun TimetableColumn(
                 val visible = allPeriods.take(maxVisible)
                 visible.forEachIndexed { index, period ->
                     SamsungStylePeriodRow(
+                        data = data,
                         period = period,
                         palette = palette,
                         verticalPadding = rowVerticalPadding
@@ -465,36 +495,71 @@ private fun TimetableColumn(
 
 @Composable
 private fun SamsungStylePeriodRow(
+    data: WidgetRenderData,
     period: ResolvedPeriod,
     palette: WidgetPalette,
     verticalPadding: Dp
 ) {
-    val shortClass = TimetableCalculator.compactClassName(period.className)
-    val periodTag = if (period.isAfternoon) "C${period.period}" else "T${period.period}"
-    val tagColor = if (period.isAfternoon) palette.rainBlue else palette.accentOrange
+    val delta = data.fontDeltaSp
+    val isNow = period.liveStatus == PeriodLiveStatus.TEACHING_NOW
+    val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
+    val isPast = period.liveStatus == PeriodLiveStatus.PAST
+
+    val baseTag = if (period.isAfternoon) "C${period.period}" else "T${period.period}"
+    val periodTag = when {
+        isNow -> "●$baseTag"
+        isPast -> "✓$baseTag"
+        else -> baseTag
+    }
+    val tagColor = when {
+        isNow -> palette.liveNowAccent
+        isNext -> palette.nextPeriodAccent
+        isPast -> palette.mutedPastText
+        period.isAfternoon -> palette.rainBlue
+        else -> palette.accentOrange
+    }
+    val textColor = if (isPast) palette.mutedPastText else palette.primaryText
+    val timeColor = when {
+        isNow -> palette.liveNowAccent
+        isNext -> palette.nextPeriodAccent
+        isPast -> palette.mutedPastText
+        else -> palette.secondaryText
+    }
+
+    val highlightBg = when {
+        isNow -> GlanceModifier
+            .cornerRadius(8.dp)
+            .background(palette.liveNowBackground)
+            .padding(horizontal = 4.dp, vertical = verticalPadding)
+        isNext -> GlanceModifier
+            .cornerRadius(8.dp)
+            .background(palette.nextPeriodBackground)
+            .padding(horizontal = 4.dp, vertical = verticalPadding)
+        else -> GlanceModifier.padding(vertical = verticalPadding)
+    }
 
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
-            .padding(vertical = verticalPadding),
+            .then(highlightBg),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = periodTag,
             style = TextStyle(
                 color = ColorProvider(tagColor),
-                fontSize = 11.sp,
+                fontSize = (10.5f + delta).coerceAtLeast(9.5f).sp,
                 fontWeight = FontWeight.Bold
             ),
-            modifier = GlanceModifier.width(24.dp),
+            modifier = GlanceModifier.width(32.dp),
             maxLines = 1
         )
         Text(
-            text = "$shortClass · ${period.subjectName}",
+            text = data.formatPeriodTitle(period),
             style = TextStyle(
-                color = ColorProvider(palette.primaryText),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
+                color = ColorProvider(textColor),
+                fontSize = (11.5f + delta).coerceAtLeast(10f).sp,
+                fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium
             ),
             modifier = GlanceModifier.defaultWeight(),
             maxLines = 1
@@ -503,9 +568,9 @@ private fun SamsungStylePeriodRow(
         Text(
             text = period.startTime.formatHHmm(),
             style = TextStyle(
-                color = ColorProvider(palette.secondaryText),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Normal,
+                color = ColorProvider(timeColor),
+                fontSize = (10.5f + delta * 0.5f).coerceAtLeast(9.5f).sp,
+                fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Normal,
                 textAlign = TextAlign.End
             ),
             maxLines = 1

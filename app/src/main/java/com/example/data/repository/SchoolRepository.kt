@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.local.AppPreferences
 import com.example.data.local.DeletedSlotsEntity
+import com.example.data.local.LessonNoteEntity
 import com.example.data.local.LocalJson
 import com.example.data.local.SchoolDao
 import com.example.data.local.SyncMetadataEntity
@@ -64,8 +65,49 @@ class SchoolRepository(
 
     val syncMetadataFlow: Flow<SyncMetadataEntity?> = dao.observeSyncMetadata()
 
+    val lessonNotesFlow: Flow<Map<String, String>> = dao.observeLessonNotes()
+        .map { list -> list.associate { it.noteKey to it.content } }
+
     fun observeSlotsForWeek(week: Int): Flow<List<TimetableSlot>> =
         dao.observeSlotsForWeek(week).map { list -> list.map { it.toDomain() } }
+
+    suspend fun saveLessonNote(
+        week: Int,
+        day: String,
+        period: Int,
+        session: String,
+        classId: String,
+        content: String
+    ) = withContext(Dispatchers.IO) {
+        val key = LessonNoteEntity.buildKey(week, day, period, session, classId)
+        val trimmed = content.trim()
+        if (trimmed.isEmpty()) {
+            dao.deleteLessonNote(key)
+        } else {
+            dao.upsertLessonNote(
+                LessonNoteEntity(
+                    noteKey = key,
+                    week = week,
+                    day = day,
+                    period = period,
+                    session = session,
+                    classId = classId,
+                    content = trimmed,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun deleteLessonNote(
+        week: Int,
+        day: String,
+        period: Int,
+        session: String,
+        classId: String
+    ) = withContext(Dispatchers.IO) {
+        dao.deleteLessonNote(LessonNoteEntity.buildKey(week, day, period, session, classId))
+    }
 
     fun isFirebaseConfigured(): Boolean = firestore.isFirebaseConfigured()
     fun configuredProjectId(): String? = firestore.configuredProjectId()
@@ -346,6 +388,7 @@ class SchoolRepository(
         val assignments = dao.getAssignments().map { it.toDomain() }
         val slots = dao.getSlotsForWeek(resolvedWeek).map { it.toDomain() }
         val deletedKeys = dao.getDeletedSlots()?.toKeySet() ?: emptySet()
+        val lessonNotes = dao.getAllLessonNotes().associate { it.noteKey to it.content }
         val prefs = preferences.getSnapshot()
         val loggedInTeacher = prefs.loggedInTeacherId?.let { id ->
             teachers.firstOrNull { it.id == id }
@@ -361,6 +404,7 @@ class SchoolRepository(
             assignments = assignments,
             slots = slots,
             deletedSlotKeys = deletedKeys,
+            lessonNotes = lessonNotes,
             loggedInTeacher = loggedInTeacher,
             preferences = prefs
         )
@@ -377,6 +421,7 @@ data class LocalSchoolSnapshot(
     val assignments: List<Assignment>,
     val slots: List<TimetableSlot>,
     val deletedSlotKeys: Set<String>,
+    val lessonNotes: Map<String, String> = emptyMap(),
     val loggedInTeacher: Teacher?,
     val preferences: com.example.data.local.UserPreferencesState
 )

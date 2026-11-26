@@ -49,6 +49,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Check
+import com.example.data.local.WidgetCornerStyle
+import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.data.remote.WeatherCodeMapper
 import com.example.domain.lunar.LunarCalendar
@@ -59,6 +63,7 @@ import com.example.domain.model.ResolvedPeriod
 import com.example.domain.model.TimetableCalculator
 import com.example.domain.model.WeatherSnapshot
 import com.example.ui.theme.EmeraldLive
+import com.example.ui.theme.LocalCompactDensity
 import com.example.ui.theme.SkyBlue
 import com.example.ui.theme.SlateInk
 import com.example.ui.theme.SundayCoral
@@ -170,8 +175,11 @@ fun HomeroomModeToggle(
 fun PeriodRowCard(
     period: ResolvedPeriod,
     showTeacherName: Boolean,
+    personalNote: String? = null,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val isCompact = LocalCompactDensity.current
     val isNow = period.liveStatus == PeriodLiveStatus.TEACHING_NOW
     val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
     val isPast = period.liveStatus == PeriodLiveStatus.PAST
@@ -191,6 +199,7 @@ fun PeriodRowCard(
     val badgeBg = when {
         isNow -> MaterialTheme.colorScheme.tertiary
         isNext -> MaterialTheme.colorScheme.primary
+        isPast -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
         period.isAfternoon -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
@@ -198,34 +207,44 @@ fun PeriodRowCard(
     val badgeText = when {
         isNow -> MaterialTheme.colorScheme.onTertiary
         isNext -> MaterialTheme.colorScheme.onPrimary
+        isPast -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
         period.isAfternoon -> MaterialTheme.colorScheme.onSecondary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     val shortClass = TimetableCalculator.compactClassName(period.className)
+    val cardModifier = modifier
+        .fillMaxWidth()
+        .then(
+            if (onClick != null) Modifier.clip(RoundedCornerShape(14.dp)).clickable { onClick() }
+            else Modifier
+        )
 
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = borderStroke,
-        modifier = modifier.fillMaxWidth()
+        modifier = cardModifier
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = if (isCompact) 10.dp else 12.dp,
+                    vertical = if (isCompact) 7.dp else 10.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(if (isCompact) 40.dp else 44.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(badgeBg)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "T${period.period}",
+                        text = if (isPast) "✓${period.period}" else "T${period.period}",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = badgeText
@@ -330,6 +349,45 @@ fun PeriodRowCard(
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }
+
+                if (!personalNote.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.EditNote,
+                                contentDescription = "Ghi chú riêng",
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = personalNote,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (onClick != null && personalNote.isNullOrBlank()) {
+                Icon(
+                    imageVector = Icons.Rounded.EditNote,
+                    contentDescription = "Thêm ghi chú",
+                    tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .size(18.dp)
+                )
             }
         }
     }
@@ -435,6 +493,9 @@ fun LiveWidgetPreviewCard(
     transparentMode: Boolean,
     opacity: Float,
     textTheme: WidgetTextTheme,
+    cornerStyle: WidgetCornerStyle = WidgetCornerStyle.ROUNDED,
+    fontSize: WidgetFontSize = WidgetFontSize.MEDIUM,
+    showSubject: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -444,7 +505,7 @@ fun LiveWidgetPreviewCard(
         isFullyTransparent = isTransparent,
         textTheme = textTheme
     )
-    val bgBase = if (useLightText) Color(0xFF161A22) else Color(0xFFF3EFE8)
+    val bgBase = if (useLightText) Color(0xFF151A24) else Color(0xFFF3EFE8)
     val primaryText = if (useLightText) Color.White else SlateInk
     val secondaryText = if (useLightText) Color(0xFFDDE5F0) else Color(0xFF334155)
     val accentOrange = if (useLightText) Color(0xFFFB923C) else SunsetOrange
@@ -476,7 +537,7 @@ fun LiveWidgetPreviewCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(if (isTransparent) 0.dp else 18.dp))
+                .clip(RoundedCornerShape(if (isTransparent) 0.dp else cornerStyle.radiusDp.dp))
                 .background(rootBg)
                 .padding(if (isTransparent) 4.dp else 12.dp),
             verticalAlignment = Alignment.Top
@@ -593,8 +654,12 @@ fun LiveWidgetPreviewCard(
                                 modifier = Modifier.width(24.dp)
                             )
                             Text(
-                                text = "${TimetableCalculator.compactClassName(p.className)} · ${p.subjectName}",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = if (showSubject) {
+                                    "${TimetableCalculator.compactClassName(p.className)} · ${p.subjectName}"
+                                } else {
+                                    "Lớp ${TimetableCalculator.compactClassName(p.className)}"
+                                },
+                                fontSize = (12f + fontSize.deltaSp).sp,
                                 fontWeight = FontWeight.Medium,
                                 color = primaryText,
                                 maxLines = 1,
@@ -627,6 +692,9 @@ fun LiveWeatherTimetablePreviewCard(
     transparentMode: Boolean,
     opacity: Float,
     textTheme: WidgetTextTheme,
+    cornerStyle: WidgetCornerStyle = WidgetCornerStyle.ROUNDED,
+    fontSize: WidgetFontSize = WidgetFontSize.MEDIUM,
+    showSubject: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -638,23 +706,18 @@ fun LiveWeatherTimetablePreviewCard(
         textTheme = textTheme
     )
 
-    val bgBase = if (useLightText) Color(0xFF161A22) else Color(0xFFFFFCF7)
-    val tileBase = if (useLightText) Color(0xFF252C3A) else Color(0xFFF3EFE8)
+    val bgBase = if (useLightText) Color(0xFF151A24) else Color(0xFFFFFCF7)
+    val tileBase = if (useLightText) Color(0xFF232B3A) else Color(0xFFF3EFE8)
     val primaryText = if (useLightText) Color.White else SlateInk
     val secondaryText = if (useLightText) Color(0xFFDDE5F0) else Color(0xFF334155)
-    val mutedPastText = if (useLightText) Color(0x99CBD5E1) else Color(0x88475569)
+    val mutedPastText = if (useLightText) Color(0x88CBD5E1) else Color(0x7A475569)
     val accentOrange = if (useLightText) Color(0xFFFB923C) else SunsetOrange
-    val liveAccent = if (useLightText) Color(0xFF34D399) else Color(0xFF059669)
+    val liveAccent = if (useLightText) Color(0xFF34D399) else Color(0xFF047857)
     val dividerColor = if (useLightText) Color(0x38FFFFFF) else Color(0x26000000)
 
     val rootBg = if (isTransparent) Color.Transparent else bgBase.copy(alpha = clampedAlpha)
-    val tileBg = if (isTransparent) Color.Transparent else tileBase.copy(alpha = (clampedAlpha * 0.92f).coerceIn(0f, 1f))
-    val liveBg = if (isTransparent) {
-        Color.Transparent
-    } else {
-        if (useLightText) Color(0xFF10B981).copy(alpha = (clampedAlpha * 0.34f).coerceIn(0.18f, 0.34f))
-        else Color(0xFF059669).copy(alpha = (clampedAlpha * 0.24f).coerceIn(0.12f, 0.24f))
-    }
+    val tileBg = if (isTransparent) Color.Transparent else tileBase.copy(alpha = (clampedAlpha * 0.90f).coerceIn(0f, 1f))
+    val liveBg = if (useLightText) Color(0x3610B981) else Color(0x26059669)
 
     val lunar = LunarCalendar.convertSolar2Lunar(today)
     val lunarShort = "${lunar.day}/${lunar.month}${if (lunar.isLeap) "N" else ""} ÂL"
@@ -678,7 +741,7 @@ fun LiveWeatherTimetablePreviewCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(if (isTransparent) 0.dp else 20.dp))
+                .clip(RoundedCornerShape(if (isTransparent) 0.dp else cornerStyle.radiusDp.dp))
                 .background(rootBg)
                 .padding(if (isTransparent) 4.dp else 12.dp)
         ) {
@@ -915,8 +978,12 @@ fun LiveWeatherTimetablePreviewCard(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "${TimetableCalculator.compactClassName(p.className)} · ${p.subjectName}",
-                                        fontSize = 10.sp,
+                                        text = if (showSubject) {
+                                            "${TimetableCalculator.compactClassName(p.className)} · ${p.subjectName}"
+                                        } else {
+                                            "Lớp ${TimetableCalculator.compactClassName(p.className)}"
+                                        },
+                                        fontSize = (10f + fontSize.deltaSp * 0.7f).sp,
                                         fontWeight = if (isNow) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isPast) mutedPastText else primaryText,
                                         maxLines = 1,

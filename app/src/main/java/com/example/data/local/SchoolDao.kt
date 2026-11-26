@@ -174,4 +174,17 @@ interface SchoolDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertWeatherCache(cache: WeatherCacheEntity)
+
+    // Personal Teacher Lesson Notes (100% local to device)
+    @Query("SELECT * FROM lesson_notes ORDER BY updatedAtMillis DESC")
+    fun observeLessonNotes(): Flow<List<LessonNoteEntity>>
+
+    @Query("SELECT * FROM lesson_notes")
+    suspend fun getAllLessonNotes(): List<LessonNoteEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLessonNote(note: LessonNoteEntity)
+
+    @Query("DELETE FROM lesson_notes WHERE noteKey = :noteKey")
+    suspend fun deleteLessonNote(noteKey: String)
 }

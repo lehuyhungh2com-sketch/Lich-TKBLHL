@@ -2,10 +2,17 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.app.TimePickerDialog
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,14 +27,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Alarm
-import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Button
@@ -43,27 +56,48 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.data.local.AppAccentPalette
+import com.example.data.local.AppDensityMode
+import com.example.data.local.AppFontScale
 import com.example.data.local.AppThemeMode
+import com.example.data.local.UserPreferencesState
+import com.example.data.local.WidgetCornerStyle
+import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.domain.lunar.VnTime
 import com.example.domain.model.TimetableCalculator
+import com.example.notification.AlarmScheduler
 import com.example.ui.MainUiState
+import com.example.ui.components.LiveTimetableOnlyPreviewCard
 import com.example.ui.components.LiveWeatherTimetablePreviewCard
 import com.example.ui.components.LiveWidgetPreviewCard
 import com.example.ui.components.SegmentOption
 import com.example.ui.components.SegmentedOptionBar
+import com.example.ui.theme.EmeraldAccent
+import com.example.ui.theme.EmeraldLive
+import com.example.ui.theme.IndigoAccent
+import com.example.ui.theme.OceanAccent
+import com.example.ui.theme.SunsetOrange
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,17 +108,37 @@ fun SettingsScreen(
     uiState: MainUiState,
     onSyncNow: () -> Unit,
     onUpdateAppTheme: (AppThemeMode) -> Unit,
+    onUpdateAccentPalette: (AppAccentPalette) -> Unit,
+    onUpdateFontScale: (AppFontScale) -> Unit,
+    onUpdateDensityMode: (AppDensityMode) -> Unit,
     onUpdateDailyReminder: (Boolean, Int, Int) -> Unit,
     onTogglePeriodReminder: (Boolean) -> Unit,
+    onUpdatePeriodLeadMinutes: (Int) -> Unit,
     onSendTestNotification: () -> Unit,
     onToggleGpsLocation: (Boolean) -> Unit,
-    onUpdateWidgetAppearance: (Boolean, Float, WidgetTextTheme) -> Unit,
+    onUpdateWidgetAppearance: (Boolean, Float, WidgetTextTheme, WidgetCornerStyle, WidgetFontSize, Boolean) -> Unit,
+    onRefreshWidgetsNow: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val prefs = uiState.preferences
     val teacher = uiState.currentTeacher
+
+    var canScheduleExactAlarms by remember {
+        mutableStateOf(AlarmScheduler.canScheduleExactAlarms(context))
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                canScheduleExactAlarms = AlarmScheduler.canScheduleExactAlarms(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -101,6 +155,13 @@ fun SettingsScreen(
     }
 
     val todayAllPeriods = uiState.todayMorningPeriods + uiState.todayAfternoonPeriods
+    val availablePalettes = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AppAccentPalette.entries
+        } else {
+            AppAccentPalette.entries.filter { it != AppAccentPalette.DYNAMIC }
+        }
+    }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -229,12 +290,17 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. APP THEME (SYSTEM / LIGHT / DARK)
+            // 2. INTERFACE & PERSONALIZATION (Theme, Accent Palette, Font Size, Density)
             item {
                 SettingsSectionCard(
-                    icon = Icons.Rounded.DarkMode,
-                    title = "Giao diện ứng dụng"
+                    icon = Icons.Rounded.Palette,
+                    title = "Giao diện & Cá nhân hóa"
                 ) {
+                    Text(
+                        text = "Chế độ sáng / tối",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     SegmentedOptionBar(
                         options = AppThemeMode.entries.map {
                             SegmentOption(it, it.label, "app_theme_${it.key}")
@@ -242,14 +308,67 @@ fun SettingsScreen(
                         selected = prefs.appThemeMode,
                         onSelect = onUpdateAppTheme
                     )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Bảng màu chủ đạo",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        availablePalettes.forEach { palette ->
+                            val isSelected = prefs.appAccentPalette == palette
+                            AccentSwatchItem(
+                                palette = palette,
+                                isSelected = isSelected,
+                                onClick = { onUpdateAccentPalette(palette) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Cỡ chữ trong ứng dụng",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SegmentedOptionBar(
+                        options = AppFontScale.entries.map {
+                            SegmentOption(it, it.label, "app_font_${it.key}")
+                        },
+                        selected = prefs.appFontScale,
+                        onSelect = onUpdateFontScale
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Mật độ hiển thị",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SegmentedOptionBar(
+                        options = AppDensityMode.entries.map {
+                            SegmentOption(it, it.label, "app_density_${it.key}")
+                        },
+                        selected = prefs.appDensityMode,
+                        onSelect = onUpdateDensityMode
+                    )
                 }
             }
 
-            // 3. DAILY 06:00 AM REMINDER & PERIOD REMINDER
+            // 3. DAILY REMINDER, PERIOD LEAD TIME & EXACT ALARM REAL-TIME PERMISSION
             item {
                 SettingsSectionCard(
                     icon = Icons.Rounded.Alarm,
-                    title = "Nhắc lịch dạy"
+                    title = "Nhắc lịch dạy & Thời gian thực"
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -324,8 +443,13 @@ fun SettingsScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Nhắc trước mỗi tiết 10 phút",
+                                text = "Nhắc trước mỗi tiết dạy",
                                 style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = "Đang đặt báo trước ${prefs.periodReminderLeadMinutes} phút",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
@@ -339,6 +463,94 @@ fun SettingsScreen(
                             },
                             modifier = Modifier.testTag("switch_period_reminder")
                         )
+                    }
+
+                    if (prefs.periodReminderEnabled) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        SegmentedOptionBar(
+                            options = UserPreferencesState.LEAD_MINUTE_OPTIONS.map { mins ->
+                                SegmentOption(mins, "$mins phút", "period_lead_$mins")
+                            },
+                            selected = prefs.periodReminderLeadMinutes,
+                            onSelect = onUpdatePeriodLeadMinutes
+                        )
+                    }
+
+                    // Android 12+ Exact Alarm Permission helper for reliable live widget ticks
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        if (canScheduleExactAlarms) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Đã cấp quyền báo thức chính xác — Widget tự đổi tiết chuẩn từng phút.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                            }
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Schedule,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Cấp quyền chạy đúng giờ cho Widget",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Bật quyền \"Báo thức & lời nhắc\" để Widget tự động đánh dấu ĐANG DẠY đúng phút bắt đầu tiết ngay cả khi khóa màn hình.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.88f)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(
+                                        onClick = {
+                                            runCatching {
+                                                val intent = Intent(
+                                                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                                    Uri.parse("package:${context.packageName}")
+                                                )
+                                                context.startActivity(intent)
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.testTag("grant_exact_alarm_button")
+                                    ) {
+                                        Text("Mở quyền Báo thức & lời nhắc")
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -408,15 +620,26 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. HOME SCREEN WIDGET CUSTOMIZATION + LIVE PREVIEW (Option A)
+            // 5. HOME SCREEN WIDGET CUSTOMIZATION + 3-WIDGET LIVE PREVIEW
             item {
                 val persistedOpacity = if (prefs.widgetTransparentMode) 0f else prefs.widgetOpacity.coerceIn(0f, 1f)
                 var liveOpacity by remember { mutableFloatStateOf(persistedOpacity) }
-                var previewWidgetTab by remember { mutableIntStateOf(1) } // 0 = Đồng hồ & TKB, 1 = Thời tiết 4 ngày & TKB
+                var previewWidgetTab by remember { mutableIntStateOf(0) } // 0 = TKB Hôm nay, 1 = Đồng hồ & TKB, 2 = Thời tiết 4 ngày
                 LaunchedEffect(prefs.widgetTransparentMode, prefs.widgetOpacity) {
                     liveOpacity = if (prefs.widgetTransparentMode) 0f else prefs.widgetOpacity.coerceIn(0f, 1f)
                 }
                 val liveIsTransparent = liveOpacity <= 0.02f
+
+                fun saveWidgetConfig(
+                    transparent: Boolean = liveIsTransparent,
+                    opacity: Float = if (transparent) 0f else liveOpacity,
+                    textTheme: WidgetTextTheme = prefs.widgetTextTheme,
+                    corner: WidgetCornerStyle = prefs.widgetCornerStyle,
+                    fontSize: WidgetFontSize = prefs.widgetFontSize,
+                    showSubject: Boolean = prefs.widgetShowSubject
+                ) {
+                    onUpdateWidgetAppearance(transparent, opacity, textTheme, corner, fontSize, showSubject)
+                }
 
                 SettingsSectionCard(
                     icon = Icons.Rounded.Widgets,
@@ -424,8 +647,9 @@ fun SettingsScreen(
                 ) {
                     SegmentedOptionBar(
                         options = listOf(
-                            SegmentOption(0, "Đồng hồ & TKB", "preview_widget_clock"),
-                            SegmentOption(1, "Thời tiết 4 ngày & TKB", "preview_widget_weather")
+                            SegmentOption(0, "TKB Hôm nay", "preview_widget_tkb"),
+                            SegmentOption(1, "Đồng hồ", "preview_widget_clock"),
+                            SegmentOption(2, "Thời tiết 4N", "preview_widget_weather")
                         ),
                         selected = previewWidgetTab,
                         onSelect = { previewWidgetTab = it }
@@ -433,8 +657,21 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    if (previewWidgetTab == 0) {
-                        LiveWidgetPreviewCard(
+                    when (previewWidgetTab) {
+                        0 -> LiveTimetableOnlyPreviewCard(
+                            today = uiState.todayDate,
+                            now = uiState.nowTime,
+                            teacherName = uiState.currentTeacher?.shortName ?: "Giáo viên",
+                            todayPeriods = todayAllPeriods,
+                            weekNumber = uiState.currentWeekNumber,
+                            transparentMode = liveIsTransparent,
+                            opacity = liveOpacity,
+                            textTheme = prefs.widgetTextTheme,
+                            cornerStyle = prefs.widgetCornerStyle,
+                            fontSize = prefs.widgetFontSize,
+                            showSubject = prefs.widgetShowSubject
+                        )
+                        1 -> LiveWidgetPreviewCard(
                             today = uiState.todayDate,
                             now = uiState.nowTime,
                             weather = uiState.weather,
@@ -442,17 +679,22 @@ fun SettingsScreen(
                             weekNumber = uiState.currentWeekNumber,
                             transparentMode = liveIsTransparent,
                             opacity = liveOpacity,
-                            textTheme = prefs.widgetTextTheme
+                            textTheme = prefs.widgetTextTheme,
+                            cornerStyle = prefs.widgetCornerStyle,
+                            fontSize = prefs.widgetFontSize,
+                            showSubject = prefs.widgetShowSubject
                         )
-                    } else {
-                        LiveWeatherTimetablePreviewCard(
+                        else -> LiveWeatherTimetablePreviewCard(
                             today = uiState.todayDate,
                             weather = uiState.weather,
                             todayPeriods = todayAllPeriods,
                             weekNumber = uiState.currentWeekNumber,
                             transparentMode = liveIsTransparent,
                             opacity = liveOpacity,
-                            textTheme = prefs.widgetTextTheme
+                            textTheme = prefs.widgetTextTheme,
+                            cornerStyle = prefs.widgetCornerStyle,
+                            fontSize = prefs.widgetFontSize,
+                            showSubject = prefs.widgetShowSubject
                         )
                     }
 
@@ -480,7 +722,7 @@ fun SettingsScreen(
                             onCheckedChange = { transparent ->
                                 val nextOpacity = if (transparent) 0f else 0.55f
                                 liveOpacity = nextOpacity
-                                onUpdateWidgetAppearance(transparent, nextOpacity, prefs.widgetTextTheme)
+                                saveWidgetConfig(transparent = transparent, opacity = nextOpacity)
                             },
                             modifier = Modifier.testTag("switch_widget_transparent")
                         )
@@ -515,7 +757,7 @@ fun SettingsScreen(
                         },
                         onValueChangeFinished = {
                             val isTrans = liveOpacity <= 0.02f
-                            onUpdateWidgetAppearance(isTrans, if (isTrans) 0f else liveOpacity, prefs.widgetTextTheme)
+                            saveWidgetConfig(transparent = isTrans, opacity = if (isTrans) 0f else liveOpacity)
                         },
                         valueRange = 0f..1f,
                         modifier = Modifier.testTag("widget_opacity_slider")
@@ -534,16 +776,158 @@ fun SettingsScreen(
                             SegmentOption(it, it.label, "widget_theme_${it.key}")
                         },
                         selected = prefs.widgetTextTheme,
-                        onSelect = {
-                            val isTrans = liveOpacity <= 0.02f
-                            onUpdateWidgetAppearance(isTrans, if (isTrans) 0f else liveOpacity, it)
-                        }
+                        onSelect = { saveWidgetConfig(textTheme = it) }
                     )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Kiểu bo góc khung Widget",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    SegmentedOptionBar(
+                        options = WidgetCornerStyle.entries.map {
+                            SegmentOption(it, it.label, "widget_corner_${it.key}")
+                        },
+                        selected = prefs.widgetCornerStyle,
+                        onSelect = { saveWidgetConfig(corner = it) }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "Cỡ chữ trên Widget",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    SegmentedOptionBar(
+                        options = WidgetFontSize.entries.map {
+                            SegmentOption(it, it.label, "widget_font_${it.key}")
+                        },
+                        selected = prefs.widgetFontSize,
+                        onSelect = { saveWidgetConfig(fontSize = it) }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Hiển thị tên môn trên Widget",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = "Tắt để chỉ hiện tên lớp gọn hơn (tiện cho GV dạy 1 môn)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = prefs.widgetShowSubject,
+                            onCheckedChange = { saveWidgetConfig(showSubject = it) },
+                            modifier = Modifier.testTag("switch_widget_show_subject")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = onRefreshWidgetsNow,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_refresh_widgets_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Làm mới tất cả Widget ngay")
+                    }
                 }
             }
 
             item { Spacer(modifier = Modifier.height(10.dp)) }
         }
+    }
+}
+
+@Composable
+private fun AccentSwatchItem(
+    palette: AppAccentPalette,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val swatchColor = when (palette) {
+        AppAccentPalette.SUNSET_ORANGE -> SunsetOrange
+        AppAccentPalette.EMERALD -> EmeraldAccent
+        AppAccentPalette.OCEAN_BLUE -> OceanAccent
+        AppAccentPalette.ROYAL_INDIGO -> IndigoAccent
+        AppAccentPalette.DYNAMIC -> EmeraldLive
+    }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable { onClick() }
+            .testTag("accent_palette_${palette.key}")
+            .padding(horizontal = 6.dp, vertical = 6.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .then(
+                    if (palette == AppAccentPalette.DYNAMIC) {
+                        Modifier.background(
+                            Brush.sweepGradient(
+                                listOf(
+                                    Color(0xFFEA580C),
+                                    Color(0xFF0D9488),
+                                    Color(0xFF0284C7),
+                                    Color(0xFF4F46E5),
+                                    Color(0xFFEA580C)
+                                )
+                            )
+                        )
+                    } else {
+                        Modifier.background(swatchColor)
+                    }
+                )
+                .then(
+                    if (isSelected) {
+                        Modifier.border(2.5.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                    } else Modifier
+                )
+        ) {
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = "Đã chọn ${palette.label}",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = palette.label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
     }
 }
 

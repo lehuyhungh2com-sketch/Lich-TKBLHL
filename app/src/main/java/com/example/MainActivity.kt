@@ -99,7 +99,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            LhlTimetableTheme(darkTheme = useDarkTheme) {
+            LhlTimetableTheme(
+                darkTheme = useDarkTheme,
+                accentPalette = uiState.preferences.appAccentPalette,
+                fontScale = uiState.preferences.appFontScale,
+                densityMode = uiState.preferences.appDensityMode
+            ) {
                 LhlTimetableRoot(
                     uiState = uiState,
                     viewModel = viewModel,
@@ -279,6 +284,8 @@ private fun LhlTimetableRoot(
                             onSyncNow = { viewModel.syncNow(force = false) },
                             onRefreshWeather = viewModel::refreshWeatherSilently,
                             onOpenTimetable = { navigateToTab(MainActivity.TAB_TIMETABLE) },
+                            onSaveLessonNote = viewModel::saveLessonNote,
+                            onDeleteLessonNote = viewModel::deleteLessonNote,
                             onDismissBanner = viewModel::dismissBanner
                         )
                     }
@@ -288,7 +295,10 @@ private fun LhlTimetableRoot(
                             uiState = uiState,
                             onSelectWeek = viewModel::selectWeek,
                             onToggleHomeroom = viewModel::toggleHomeroomMode,
-                            onSyncNow = { viewModel.syncNow(force = true) }
+                            onSyncNow = { viewModel.syncNow(force = true) },
+                            onSaveLessonNote = viewModel::saveLessonNote,
+                            onDeleteLessonNote = viewModel::deleteLessonNote,
+                            onNotify = viewModel::showBannerMessage
                         )
                     }
 
@@ -307,11 +317,16 @@ private fun LhlTimetableRoot(
                             uiState = uiState,
                             onSyncNow = { viewModel.syncNow(force = true) },
                             onUpdateAppTheme = viewModel::updateAppThemeMode,
+                            onUpdateAccentPalette = viewModel::updateAppAccentPalette,
+                            onUpdateFontScale = viewModel::updateAppFontScale,
+                            onUpdateDensityMode = viewModel::updateAppDensityMode,
                             onUpdateDailyReminder = viewModel::updateDailyReminder,
                             onTogglePeriodReminder = viewModel::togglePeriodReminder,
+                            onUpdatePeriodLeadMinutes = viewModel::updatePeriodReminderLeadMinutes,
                             onSendTestNotification = viewModel::sendTestReminderNotification,
                             onToggleGpsLocation = viewModel::setUseGpsLocation,
                             onUpdateWidgetAppearance = viewModel::updateWidgetAppearance,
+                            onRefreshWidgetsNow = viewModel::refreshAllWidgetsNow,
                             onLogout = viewModel::logout
                         )
                     }

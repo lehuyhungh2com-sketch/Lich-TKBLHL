@@ -2,7 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Warm Sunset Editorial Palette inspired by the Vietnamese Home Widget
+// Warm Sunset Editorial Palette (Default)
 val SunsetOrange = Color(0xFFEA580C)
 val SunsetOrangeBright = Color(0xFFF97316)
 val SunsetOrangeContainer = Color(0xFFFFEDD5)
@@ -18,6 +18,25 @@ val OnSkyBlueContainer = Color(0xFF075985)
 
 val EmeraldLive = Color(0xFF15803D)
 val EmeraldLiveContainer = Color(0xFFDCFCE7)
+
+// Additional Modern Accent Palettes
+val EmeraldAccent = Color(0xFF059669)
+val EmeraldAccentContainer = Color(0xFFD1FAE5)
+val OnEmeraldAccentContainer = Color(0xFF064E3B)
+val EmeraldAccentDark = Color(0xFF34D399)
+val EmeraldAccentDarkContainer = Color(0xFF064E3B)
+
+val OceanAccent = Color(0xFF0284C7)
+val OceanAccentContainer = Color(0xFFE0F2FE)
+val OnOceanAccentContainer = Color(0xFF0C4A6E)
+val OceanAccentDark = Color(0xFF38BDF8)
+val OceanAccentDarkContainer = Color(0xFF0C3650)
+
+val IndigoAccent = Color(0xFF4F46E5)
+val IndigoAccentContainer = Color(0xFFE0E7FF)
+val OnIndigoAccentContainer = Color(0xFF312E81)
+val IndigoAccentDark = Color(0xFF818CF8)
+val IndigoAccentDarkContainer = Color(0xFF2E2A6E)
 
 val WarmAlabaster = Color(0xFFF6F3EE)
 val WarmSurface = Color(0xFFFFFFFF)

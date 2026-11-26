@@ -385,3 +385,21 @@ fun WeatherSnapshot.toEntity() = WeatherCacheEntity(
     dailyForecastsJson = LocalJson.forecastsToJson(dailyForecasts),
     updatedAtMillis = updatedAtMillis
 )
+
+@Entity(tableName = "lesson_notes")
+data class LessonNoteEntity(
+    @PrimaryKey val noteKey: String,
+    val week: Int,
+    val day: String,
+    val period: Int,
+    val session: String,
+    val classId: String,
+    val content: String,
+    val updatedAtMillis: Long
+) {
+    companion object {
+        fun buildKey(week: Int, day: String, period: Int, session: String, classId: String): String =
+            "w${week}_${day}_${session}_p${period}_${classId.trim().lowercase()}"
+    }
+}
+

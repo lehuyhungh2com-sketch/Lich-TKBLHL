@@ -106,13 +106,14 @@ object NotificationHelper {
         className: String,
         subjectName: String,
         startTimeText: String,
-        room: String
+        room: String,
+        leadMinutes: Int = 10
     ) {
         if (!hasNotificationPermission(context)) return
         createChannels(context)
 
         val roomPart = if (room.isNotBlank()) " • Phòng $room" else ""
-        val title = "Sắp vào Tiết $periodNumber ($startTimeText)"
+        val title = "Còn $leadMinutes phút vào Tiết $periodNumber ($startTimeText)"
         val body = "Lớp $className — $subjectName$roomPart"
 
         val openIntent = Intent(context, MainActivity::class.java).apply {

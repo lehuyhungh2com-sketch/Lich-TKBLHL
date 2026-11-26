@@ -4,9 +4,15 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.LhlTimetableApp
+import com.example.data.local.AppAccentPalette
+import com.example.data.local.AppDensityMode
+import com.example.data.local.AppFontScale
 import com.example.data.local.AppThemeMode
+import com.example.data.local.LessonNoteEntity
 import com.example.data.local.SyncMetadataEntity
 import com.example.data.local.UserPreferencesState
+import com.example.data.local.WidgetCornerStyle
+import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.data.repository.LoginResult
 import com.example.domain.lunar.LunarCalendar
@@ -41,6 +47,8 @@ data class MainUiState(
     val preferences: UserPreferencesState = UserPreferencesState(),
     val currentTeacher: Teacher? = null,
     val homeroomClass: SchoolClass? = null,
+    val allTeachers: List<Teacher> = emptyList(),
+    val allClasses: List<SchoolClass> = emptyList(),
     val schoolConfig: SchoolConfig = SchoolConfig(),
     val weeks: List<WeekInfo> = emptyList(),
     val currentWeekNumber: Int = 1,
@@ -53,7 +61,9 @@ data class MainUiState(
     val todayMorningPeriods: List<ResolvedPeriod> = emptyList(),
     val todayAfternoonPeriods: List<ResolvedPeriod> = emptyList(),
     val selectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
+    val allSelectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val currentWeekPeriods: List<ResolvedPeriod> = emptyList(),
+    val lessonNotes: Map<String, String> = emptyMap(),
     val weather: WeatherSnapshot? = null,
     val syncMetadata: SyncMetadataEntity? = null,
     val isSyncing: Boolean = false,
@@ -66,6 +76,17 @@ data class MainUiState(
     val homeroomClassId: String? get() = homeroomClass?.id ?: currentTeacher?.homeroomClass
     val canToggleHomeroom: Boolean get() = !homeroomClassId.isNullOrBlank()
     val effectiveShowHomeroom: Boolean get() = preferences.showHomeroomClass && canToggleHomeroom
+
+    fun personalNoteFor(period: ResolvedPeriod): String? {
+        val key = LessonNoteEntity.buildKey(
+            week = period.week,
+            day = period.day,
+            period = period.period,
+            session = period.session,
+            classId = period.classId
+        )
+        return lessonNotes[key]?.takeIf { it.isNotBlank() }
+    }
 }
 
 private data class LocalCatalogBundle(
@@ -148,9 +169,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         weatherRepo.weatherFlow,
         schoolRepo.syncMetadataFlow,
         prefsRepo.preferencesFlow,
-        transientStatus
-    ) { weather, syncMeta, prefs, status ->
-        MetaWeatherPrefs(weather, syncMeta, prefs, status)
+        transientStatus,
+        schoolRepo.lessonNotesFlow
+    ) { weather, syncMeta, prefs, status, notes ->
+        MetaWeatherPrefs(weather, syncMeta, prefs, status, notes)
     }
 
     val uiState: StateFlow<MainUiState> = combine(
@@ -202,6 +224,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             emptyList()
         }
 
+        val allSelectedWeekResolved = if (currentTeacher != null) {
+            TimetableCalculator.resolveWeekPeriods(
+                weekNumber = selectedWeek,
+                rawSlots = selectedWeekSlots,
+                schoolConfig = catalog.config,
+                weekInfo = selectedWeekInfo,
+                deletedSlotKeys = catalog.deletedKeys,
+                teachers = catalog.teachers,
+                classes = catalog.classes,
+                subjects = catalog.subjects,
+                assignments = catalog.assignments,
+                filterTeacherId = null,
+                filterClassId = null,
+                todayDate = if (selectedWeek == currentWeek && !isSundayPreview) today else null,
+                nowTime = if (selectedWeek == currentWeek && !isSundayPreview) now else null
+            )
+        } else {
+            emptyList()
+        }
+
         val selectedWeekResolved = if (currentTeacher != null) {
             TimetableCalculator.resolveWeekPeriods(
                 weekNumber = selectedWeek,
@@ -231,6 +273,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             preferences = prefs,
             currentTeacher = currentTeacher,
             homeroomClass = homeroomClass,
+            allTeachers = catalog.teachers.sortedBy { it.name },
+            allClasses = catalog.classes.sortedWith(compareBy({ it.grade }, { it.name })),
             schoolConfig = catalog.config,
             weeks = catalog.weeks,
             currentWeekNumber = currentWeek,
@@ -243,7 +287,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             todayMorningPeriods = todayPeriods.filter { !it.isAfternoon },
             todayAfternoonPeriods = todayPeriods.filter { it.isAfternoon },
             selectedWeekPeriods = selectedWeekResolved,
+            allSelectedWeekPeriods = allSelectedWeekResolved,
             currentWeekPeriods = currentWeekResolved,
+            lessonNotes = mwp.lessonNotes,
             weather = mwp.weather,
             syncMetadata = mwp.syncMeta,
             isSyncing = mwp.status.isSyncing,
@@ -271,7 +317,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             while (true) {
                 clockTickFlow.value = VnDate.today() to VnTime.now()
-                delay(30_000L)
+                delay(15_000L)
             }
         }
     }
@@ -291,6 +337,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissBanner() {
         transientStatus.value = transientStatus.value.copy(syncStatusBanner = null)
+    }
+
+    fun showBannerMessage(message: String) {
+        transientStatus.value = transientStatus.value.copy(syncStatusBanner = message)
     }
 
     fun login(email: String, password: String) {
@@ -364,6 +414,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveLessonNote(period: ResolvedPeriod, content: String) {
+        viewModelScope.launch {
+            schoolRepo.saveLessonNote(
+                week = period.week,
+                day = period.day,
+                period = period.period,
+                session = period.session,
+                classId = period.classId,
+                content = content
+            )
+            WidgetUpdater.updateAllWidgets(app)
+            transientStatus.value = transientStatus.value.copy(
+                syncStatusBanner = if (content.isBlank()) "Đã xóa ghi chú tiết dạy." else "Đã lưu ghi chú riêng trên máy."
+            )
+        }
+    }
+
+    fun deleteLessonNote(period: ResolvedPeriod) {
+        saveLessonNote(period, "")
+    }
+
     fun refreshWeatherSilently() {
         viewModelScope.launch {
             transientStatus.value = transientStatus.value.copy(isRefreshingWeather = true)
@@ -391,12 +462,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             prefsRepo.setPeriodReminderEnabled(enabled)
             ReminderAlarmReceiver.rescheduleFromLocal(app, app)
+            val lead = uiState.value.preferences.periodReminderLeadMinutes
             transientStatus.value = transientStatus.value.copy(
                 syncStatusBanner = if (enabled) {
-                    "Đã bật nhắc trước mỗi tiết dạy 10 phút."
+                    "Đã bật nhắc trước mỗi tiết dạy $lead phút."
                 } else {
                     "Đã tắt nhắc trước mỗi tiết dạy."
                 }
+            )
+        }
+    }
+
+    fun updatePeriodReminderLeadMinutes(minutes: Int) {
+        viewModelScope.launch {
+            prefsRepo.setPeriodReminderLeadMinutes(minutes)
+            ReminderAlarmReceiver.rescheduleFromLocal(app, app)
+            transientStatus.value = transientStatus.value.copy(
+                syncStatusBanner = "Đã đổi thời gian nhắc trước tiết thành $minutes phút."
             )
         }
     }
@@ -429,17 +511,55 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateAppAccentPalette(palette: AppAccentPalette) {
+        viewModelScope.launch {
+            prefsRepo.setAppAccentPalette(palette)
+        }
+    }
+
+    fun updateAppFontScale(scale: AppFontScale) {
+        viewModelScope.launch {
+            prefsRepo.setAppFontScale(scale)
+        }
+    }
+
+    fun updateAppDensityMode(mode: AppDensityMode) {
+        viewModelScope.launch {
+            prefsRepo.setAppDensityMode(mode)
+        }
+    }
+
     fun updateWidgetAppearance(
         transparentMode: Boolean,
         opacity: Float,
-        textTheme: WidgetTextTheme
+        textTheme: WidgetTextTheme,
+        cornerStyle: WidgetCornerStyle,
+        fontSize: WidgetFontSize,
+        showSubject: Boolean
     ) {
         widgetUpdateJob?.cancel()
         widgetUpdateJob = viewModelScope.launch {
             val isTransparent = transparentMode || opacity <= 0.02f
             val normalizedOpacity = if (isTransparent) 0f else opacity.coerceIn(0.05f, 1f)
-            prefsRepo.setWidgetAppearance(isTransparent, normalizedOpacity, textTheme)
+            prefsRepo.setWidgetAppearance(
+                transparentMode = isTransparent,
+                opacity = normalizedOpacity,
+                textTheme = textTheme,
+                cornerStyle = cornerStyle,
+                fontSize = fontSize,
+                showSubject = showSubject
+            )
             WidgetUpdater.updateAllWidgets(app)
+        }
+    }
+
+    fun refreshAllWidgetsNow() {
+        viewModelScope.launch {
+            ReminderAlarmReceiver.rescheduleFromLocal(app, app)
+            WidgetUpdater.updateAllWidgets(app)
+            transientStatus.value = transientStatus.value.copy(
+                syncStatusBanner = "Đã cập nhật lại toàn bộ Widget theo thời gian thực."
+            )
         }
     }
 }
@@ -448,5 +568,6 @@ private data class MetaWeatherPrefs(
     val weather: WeatherSnapshot?,
     val syncMeta: SyncMetadataEntity?,
     val prefs: UserPreferencesState,
-    val status: TransientStatus
+    val status: TransientStatus,
+    val lessonNotes: Map<String, String>
 )

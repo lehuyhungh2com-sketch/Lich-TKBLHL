@@ -85,7 +85,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
     val rootBgModifier = if (palette.isFullyTransparent) {
         GlanceModifier
     } else {
-        GlanceModifier.cornerRadius(22.dp).background(palette.backgroundColor)
+        GlanceModifier.cornerRadius(data.cornerRadiusDp.dp).background(palette.backgroundColor)
     }
 
     Column(

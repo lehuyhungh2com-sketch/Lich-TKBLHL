@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.res.Configuration
 import androidx.compose.ui.graphics.Color
 import com.example.LhlTimetableApp
+import com.example.data.local.LessonNoteEntity
+import com.example.data.local.WidgetCornerStyle
+import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.data.remote.WeatherCodeMapper
 import com.example.domain.lunar.LunarCalendar
@@ -11,6 +14,7 @@ import com.example.domain.lunar.LunarDate
 import com.example.domain.lunar.VnDate
 import com.example.domain.lunar.VnTime
 import com.example.domain.model.DailyForecast
+import com.example.domain.model.PeriodLiveStatus
 import com.example.domain.model.ResolvedPeriod
 import com.example.domain.model.TimetableCalculator
 import com.example.domain.model.WeatherSnapshot
@@ -28,6 +32,8 @@ data class WidgetPalette(
     val cardTileBackground: Color,
     val liveNowBackground: Color,
     val liveNowAccent: Color,
+    val nextPeriodBackground: Color,
+    val nextPeriodAccent: Color,
     val primaryText: Color,
     val secondaryText: Color,
     val mutedPastText: Color,
@@ -62,8 +68,56 @@ data class WidgetRenderData(
     val afternoonPeriods: List<ResolvedPeriod>,
     val morningCompactLine: String,
     val afternoonCompactLine: String,
+    val lessonNotes: Map<String, String>,
+    val cornerRadiusDp: Int,
+    val fontDeltaSp: Float,
+    val showSubjectOnWidget: Boolean,
     val palette: WidgetPalette
-)
+) {
+    fun noteFor(period: ResolvedPeriod): String? {
+        val key = LessonNoteEntity.buildKey(
+            week = period.week,
+            day = period.day,
+            period = period.period,
+            session = period.session,
+            classId = period.classId
+        )
+        return lessonNotes[key]?.takeIf { it.isNotBlank() } ?: period.note?.takeIf { it.isNotBlank() }
+    }
+
+    fun formatPeriodTitle(period: ResolvedPeriod): String {
+        val cls = TimetableCalculator.compactClassName(period.className)
+        val hasNote = !noteFor(period).isNullOrBlank()
+        val noteMark = if (hasNote) " ✎" else ""
+        return if (showSubjectOnWidget) {
+            "$cls · ${period.subjectName}$noteMark"
+        } else {
+            "Lớp $cls$noteMark"
+        }
+    }
+
+    fun liveStatusBadgeText(): Pair<String, Color>? {
+        val all = morningPeriods + afternoonPeriods
+        if (!isLoggedIn || isSundayPreview || all.isEmpty()) return null
+        val teachingNow = all.firstOrNull { it.liveStatus == PeriodLiveStatus.TEACHING_NOW }
+        val nextPeriod = all.firstOrNull { it.liveStatus == PeriodLiveStatus.NEXT_PERIOD }
+        return when {
+            teachingNow != null -> {
+                val tag = if (teachingNow.isAfternoon) "C${teachingNow.period}" else "T${teachingNow.period}"
+                val cls = TimetableCalculator.compactClassName(teachingNow.className)
+                val left = (teachingNow.endTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
+                "● Đang dạy $tag ($cls) · còn ${left}p" to palette.liveNowAccent
+            }
+            nextPeriod != null -> {
+                val tag = if (nextPeriod.isAfternoon) "C${nextPeriod.period}" else "T${nextPeriod.period}"
+                val until = (nextPeriod.startTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
+                val countdown = if (until < 60) "còn ${until}p" else nextPeriod.startTime.formatHHmm()
+                "Tiếp: $tag · $countdown" to palette.nextPeriodAccent
+            }
+            else -> "✓ Đã xong ${all.size}/${all.size} tiết" to palette.mutedPastText
+        }
+    }
+}
 
 object WidgetDataBuilder {
 
@@ -112,19 +166,19 @@ object WidgetDataBuilder {
 
         val morning = periods.filter { !it.isAfternoon }
         val afternoon = periods.filter { it.isAfternoon }
+        val prefs = snapshot.preferences
 
         val palette = resolvePalette(
             context = context,
-            transparentMode = snapshot.preferences.widgetTransparentMode,
-            opacity = snapshot.preferences.widgetOpacity,
-            textTheme = snapshot.preferences.widgetTextTheme
+            transparentMode = prefs.widgetTransparentMode,
+            opacity = prefs.widgetOpacity,
+            textTheme = prefs.widgetTextTheme
         )
 
         val weatherCode = weather?.weatherCode ?: 2
         val weatherDesc = weather?.let { WeatherCodeMapper.descriptionVietnamese(it.weatherCode) }
             ?: "Chạm để cập nhật"
         val weatherIconRes = WeatherCodeMapper.widgetIconRes(weatherCode)
-
         val lunarShort = "${todayLunar.day}/${todayLunar.month}${if (todayLunar.isLeap) "N" else ""} ÂL"
 
         return WidgetRenderData(
@@ -149,6 +203,10 @@ object WidgetDataBuilder {
             afternoonPeriods = afternoon,
             morningCompactLine = TimetableCalculator.formatCompactSessionLine("Sáng", morning),
             afternoonCompactLine = TimetableCalculator.formatCompactSessionLine("Chiều", afternoon),
+            lessonNotes = snapshot.lessonNotes,
+            cornerRadiusDp = prefs.widgetCornerStyle.radiusDp,
+            fontDeltaSp = prefs.widgetFontSize.deltaSp,
+            showSubjectOnWidget = prefs.widgetShowSubject,
             palette = palette
         )
     }
@@ -173,7 +231,6 @@ object WidgetDataBuilder {
                             if (colors != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                                 (colors.colorHints and android.app.WallpaperColors.HINT_SUPPORTS_DARK_TEXT) != 0
                             } else if (colors != null) {
-                                // Estimate luminance from primary wallpaper color on API 27-30
                                 val primary = colors.primaryColor
                                 val luminance = 0.299f * primary.red() + 0.587f * primary.green() + 0.114f * primary.blue()
                                 luminance > 0.68f
@@ -201,11 +258,12 @@ object WidgetDataBuilder {
         val clampedAlpha = opacity.coerceIn(0f, 1f)
         val isFullyTransparent = transparentMode || clampedAlpha <= 0.02f
         val useLightText = detectUseLightText(context, isFullyTransparent, textTheme)
-        val bgBase = if (useLightText) Color(0xFF161A22) else Color(0xFFFFFCF7)
-        val tileBase = if (useLightText) Color(0xFF252C3A) else Color(0xFFF3EFE8)
-        val scheduleBase = if (useLightText) Color(0xFF232936) else Color(0xFFE7E1D6)
-        val tileAlpha = (clampedAlpha * 0.92f).coerceIn(0f, 1f)
-        val liveTileAlpha = (clampedAlpha * 0.34f).coerceIn(0.18f, 0.34f)
+        val bgBase = if (useLightText) Color(0xFF151A24) else Color(0xFFFFFCF7)
+        val tileBase = if (useLightText) Color(0xFF232B3A) else Color(0xFFF3EFE8)
+        val scheduleBase = if (useLightText) Color(0xFF202736) else Color(0xFFE7E1D6)
+        val tileAlpha = (clampedAlpha * 0.90f).coerceIn(0f, 1f)
+        val liveTileAlpha = (clampedAlpha * 0.36f).coerceIn(0.20f, 0.36f)
+        val nextTileAlpha = (clampedAlpha * 0.28f).coerceIn(0.14f, 0.28f)
 
         return WidgetPalette(
             useLightText = useLightText,
@@ -213,15 +271,22 @@ object WidgetDataBuilder {
             backgroundColor = if (isFullyTransparent) Color.Transparent else bgBase.copy(alpha = clampedAlpha),
             cardTileBackground = if (isFullyTransparent) Color.Transparent else tileBase.copy(alpha = tileAlpha),
             liveNowBackground = if (isFullyTransparent) {
-                Color.Transparent
+                if (useLightText) Color(0x3310B981) else Color(0x28059669)
             } else {
                 if (useLightText) Color(0xFF10B981).copy(alpha = liveTileAlpha)
-                else Color(0xFF059669).copy(alpha = liveTileAlpha * 0.7f)
+                else Color(0xFF059669).copy(alpha = liveTileAlpha * 0.65f)
             },
-            liveNowAccent = if (useLightText) Color(0xFF34D399) else Color(0xFF059669),
+            liveNowAccent = if (useLightText) Color(0xFF34D399) else Color(0xFF047857),
+            nextPeriodBackground = if (isFullyTransparent) {
+                if (useLightText) Color(0x26FB923C) else Color(0x22EA580C)
+            } else {
+                if (useLightText) Color(0xFFFB923C).copy(alpha = nextTileAlpha)
+                else Color(0xFFEA580C).copy(alpha = nextTileAlpha * 0.6f)
+            },
+            nextPeriodAccent = if (useLightText) Color(0xFFFB923C) else Color(0xFFEA580C),
             primaryText = if (useLightText) Color(0xFFFFFFFF) else Color(0xFF111827),
             secondaryText = if (useLightText) Color(0xFFDDE5F0) else Color(0xFF334155),
-            mutedPastText = if (useLightText) Color(0x99CBD5E1) else Color(0x88475569),
+            mutedPastText = if (useLightText) Color(0x88CBD5E1) else Color(0x7A475569),
             pillBackground = if (isFullyTransparent) {
                 Color.Transparent
             } else {
@@ -233,7 +298,7 @@ object WidgetDataBuilder {
                 Color(0xFFF8FAFC)
             },
             scheduleContainer = if (isFullyTransparent) Color.Transparent else scheduleBase.copy(alpha = clampedAlpha * 0.85f),
-            dividerColor = if (useLightText) Color(0x38FFFFFF) else Color(0x26000000),
+            dividerColor = if (useLightText) Color(0x34FFFFFF) else Color(0x22000000),
             accentOrange = if (useLightText) Color(0xFFFB923C) else Color(0xFFEA580C),
             sundayColor = if (useLightText) Color(0xFFF87171) else Color(0xFFDC2626),
             rainBlue = if (useLightText) Color(0xFF38BDF8) else Color(0xFF0284C7)

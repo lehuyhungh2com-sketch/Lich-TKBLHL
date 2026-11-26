@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +24,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.LocationOn
-import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.WaterDrop
@@ -41,10 +43,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -52,12 +58,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.remote.WeatherCodeMapper
 import com.example.domain.lunar.LunarCalendar
+import com.example.domain.model.PeriodLiveStatus
+import com.example.domain.model.ResolvedPeriod
 import com.example.domain.model.WeatherSnapshot
 import com.example.ui.MainUiState
 import com.example.ui.components.HomeroomModeToggle
+import com.example.ui.components.LessonNoteEditorSheet
+import com.example.ui.components.LivePeriodHeroCard
 import com.example.ui.components.PeriodRowCard
 import com.example.ui.components.WeatherIcon
 import com.example.ui.components.WeekStripBar
+import com.example.ui.components.WeeklyStatsRibbon
+import com.example.ui.theme.LocalCompactDensity
 import com.example.ui.theme.SkyBlue
 import com.example.ui.theme.SunsetOrange
 import com.example.ui.theme.SunsetOrangeBright
@@ -69,11 +81,21 @@ fun TodayScreen(
     onSyncNow: () -> Unit,
     onRefreshWeather: () -> Unit,
     onOpenTimetable: () -> Unit,
+    onSaveLessonNote: (ResolvedPeriod, String) -> Unit,
+    onDeleteLessonNote: (ResolvedPeriod) -> Unit,
     onDismissBanner: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val teacher = uiState.currentTeacher
+    val isCompact = LocalCompactDensity.current
     val holiday = LunarCalendar.getVietnameseHolidayLabel(uiState.todayDate, uiState.todayLunar)
+    val todayAllPeriods = uiState.todayMorningPeriods + uiState.todayAfternoonPeriods
+    var editingPeriod by remember { mutableStateOf<ResolvedPeriod?>(null) }
+    var expandCalendarWeather by rememberSaveable { mutableStateOf(false) }
+
+    val todayDone = todayAllPeriods.count { it.liveStatus == PeriodLiveStatus.PAST }
+    val weekMorning = uiState.currentWeekPeriods.count { !it.isAfternoon }
+    val weekAfternoon = uiState.currentWeekPeriods.count { it.isAfternoon }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -83,8 +105,11 @@ fun TodayScreen(
             modifier = Modifier
                 .widthIn(max = 680.dp)
                 .fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(
+                horizontal = if (isCompact) 12.dp else 16.dp,
+                vertical = if (isCompact) 10.dp else 14.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(if (isCompact) 10.dp else 14.dp)
         ) {
             // Greeting & Teacher Header
             item {
@@ -108,7 +133,7 @@ fun TodayScreen(
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
                                 text = "Tuần ${uiState.currentWeekNumber} • ${uiState.schoolConfig.academicYear}",
@@ -185,7 +210,32 @@ fun TodayScreen(
                 }
             }
 
-            // 1. TODAY'S TIMETABLE HERO CARD (Real-Time)
+            // 1. REAL-TIME TEACHING FOCUS HERO CARD (Live progress bar + countdown)
+            if (!uiState.isSundayPreview && todayAllPeriods.isNotEmpty()) {
+                item {
+                    LivePeriodHeroCard(
+                        todayPeriods = todayAllPeriods,
+                        nowTime = uiState.nowTime,
+                        isSundayPreview = uiState.isSundayPreview,
+                        showTeacherName = uiState.effectiveShowHomeroom,
+                        personalNoteLookup = uiState::personalNoteFor,
+                        onPeriodClick = { editingPeriod = it }
+                    )
+                }
+            }
+
+            // 2. COMPACT COLLAPSIBLE DATE + LUNAR + WEATHER SUMMARY BAR
+            item {
+                CollapsibleCalendarWeatherCard(
+                    uiState = uiState,
+                    holiday = holiday,
+                    expanded = expandCalendarWeather,
+                    onToggleExpand = { expandCalendarWeather = !expandCalendarWeather },
+                    onRefreshWeather = onRefreshWeather
+                )
+            }
+
+            // 3. TODAY'S TIMETABLE CARD (Tap any period to add personal note)
             item {
                 Card(
                     shape = RoundedCornerShape(24.dp),
@@ -193,7 +243,7 @@ fun TodayScreen(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(if (isCompact) 12.dp else 16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -209,12 +259,12 @@ fun TodayScreen(
                                     style = MaterialTheme.typography.titleLarge,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
-                                val totalCount = uiState.todayMorningPeriods.size + uiState.todayAfternoonPeriods.size
+                                val totalCount = todayAllPeriods.size
                                 Text(
                                     text = if (totalCount == 0) {
                                         "Không có tiết dạy"
                                     } else {
-                                        "$totalCount tiết (${uiState.todayMorningPeriods.size} sáng, ${uiState.todayAfternoonPeriods.size} chiều)"
+                                        "$totalCount tiết (${uiState.todayMorningPeriods.size} sáng, ${uiState.todayAfternoonPeriods.size} chiều) • Chạm tiết để ghi chú"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -238,9 +288,9 @@ fun TodayScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        if (uiState.todayMorningPeriods.isEmpty() && uiState.todayAfternoonPeriods.isEmpty()) {
+                        if (todayAllPeriods.isEmpty()) {
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
@@ -281,11 +331,13 @@ fun TodayScreen(
                                     tint = SunsetOrange
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)) {
                                     uiState.todayMorningPeriods.forEach { period ->
                                         PeriodRowCard(
                                             period = period,
-                                            showTeacherName = uiState.effectiveShowHomeroom
+                                            showTeacherName = uiState.effectiveShowHomeroom,
+                                            personalNote = uiState.personalNoteFor(period),
+                                            onClick = { editingPeriod = period }
                                         )
                                     }
                                 }
@@ -293,7 +345,7 @@ fun TodayScreen(
 
                             if (uiState.todayAfternoonPeriods.isNotEmpty()) {
                                 if (uiState.todayMorningPeriods.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
                                 }
                                 SessionHeaderRow(
                                     icon = Icons.Rounded.WbTwilight,
@@ -301,11 +353,13 @@ fun TodayScreen(
                                     tint = SkyBlue
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)) {
                                     uiState.todayAfternoonPeriods.forEach { period ->
                                         PeriodRowCard(
                                             period = period,
-                                            showTeacherName = uiState.effectiveShowHomeroom
+                                            showTeacherName = uiState.effectiveShowHomeroom,
+                                            personalNote = uiState.personalNoteFor(period),
+                                            onClick = { editingPeriod = period }
                                         )
                                     }
                                 }
@@ -315,123 +369,288 @@ fun TodayScreen(
                 }
             }
 
-            // 2. SOLAR - LUNAR CALENDAR CARD (100% Offline Ho Ngoc Duc UTC+7)
+            // 4. WEEKLY TEACHING STATS RIBBON
             item {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = uiState.nowTime.formatHHmm(),
-                                    style = MaterialTheme.typography.displayMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                                Text(
-                                    text = "${uiState.todayDate.formatFullVietnamese()}, ${uiState.todayDate.year}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF232936)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    horizontalAlignment = Alignment.End
-                                ) {
-                                    Text(
-                                        text = "${uiState.todayLunar.day}/${uiState.todayLunar.month}${if (uiState.todayLunar.isLeap) "N" else ""} Âm lịch",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                    Text(
-                                        text = "Năm ${uiState.todayLunar.canChiYear}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFFDBA74),
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Full Can Chi bar (3 equal columns — never collides or wraps mid-word)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            CanChiMiniCell(
-                                label = "Ngày",
-                                value = uiState.todayLunar.canChiDay,
-                                modifier = Modifier.weight(1f)
-                            )
-                            CanChiMiniCell(
-                                label = "Tháng",
-                                value = uiState.todayLunar.canChiMonth,
-                                modifier = Modifier.weight(1f)
-                            )
-                            CanChiMiniCell(
-                                label = "Giờ",
-                                value = LunarCalendar.getHourCanChi(uiState.todayLunar.julianDay, uiState.nowTime.hour),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        if (!holiday.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                            ) {
-                                Text(
-                                    text = "Sự kiện hôm nay: $holiday",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        WeekStripBar(today = uiState.todayDate)
-                    }
-                }
-            }
-
-            // 3. WEATHER CARD (Open-Meteo Live + 3-Day Forecast)
-            item {
-                WeatherTodayCard(
-                    weather = uiState.weather,
-                    isRefreshing = uiState.isRefreshingWeather,
-                    onRefresh = onRefreshWeather
+                WeeklyStatsRibbon(
+                    todayDone = todayDone,
+                    todayTotal = todayAllPeriods.size,
+                    weekMorning = weekMorning,
+                    weekAfternoon = weekAfternoon,
+                    notesCount = uiState.lessonNotes.size
                 )
             }
 
             item { Spacer(modifier = Modifier.height(8.dp)) }
+        }
+    }
+
+    editingPeriod?.let { period ->
+        LessonNoteEditorSheet(
+            period = period,
+            existingNote = uiState.personalNoteFor(period).orEmpty(),
+            onDismiss = { editingPeriod = null },
+            onSave = { content -> onSaveLessonNote(period, content) },
+            onDelete = { onDeleteLessonNote(period) }
+        )
+    }
+}
+
+@Composable
+private fun CollapsibleCalendarWeatherCard(
+    uiState: MainUiState,
+    holiday: String?,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onRefreshWeather: () -> Unit
+) {
+    val weather = uiState.weather
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .clickable { onToggleExpand() }
+            .testTag("collapsible_calendar_weather_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Compact Always-Visible Summary Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = uiState.nowTime.formatHHmm(),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${uiState.todayDate.vietnameseWeekday}, ${uiState.todayDate.formatDayMonth()}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        text = "${uiState.todayLunar.formatBadge()} • Ngày ${uiState.todayLunar.canChiDay}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Compact weather pill
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (weather != null) {
+                        WeatherIcon(
+                            weatherCode = weather.weatherCode,
+                            isDay = weather.isDay,
+                            size = 24.dp
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "${weather.currentTemp}°C",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "${weather.todayLow}°/${weather.todayHigh}°",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = if (expanded) "Thu gọn" else "Mở rộng lịch & thời tiết",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (!holiday.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                ) {
+                    Text(
+                        text = "Sự kiện hôm nay: $holiday",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Expandable Full Can-Chi + WeekStrip + 4-Day Forecast
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(top = 12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        CanChiMiniCell("Ngày", uiState.todayLunar.canChiDay, Modifier.weight(1f))
+                        CanChiMiniCell("Tháng", uiState.todayLunar.canChiMonth, Modifier.weight(1f))
+                        CanChiMiniCell(
+                            "Giờ",
+                            LunarCalendar.getHourCanChi(uiState.todayLunar.julianDay, uiState.nowTime.hour),
+                            Modifier.weight(1f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    WeekStripBar(today = uiState.todayDate)
+
+                    if (weather != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        ExpandedWeatherDetails(
+                            weather = weather,
+                            isRefreshing = uiState.isRefreshingWeather,
+                            onRefresh = onRefreshWeather
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpandedWeatherDetails(
+    weather: WeatherSnapshot,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Rounded.LocationOn,
+                contentDescription = null,
+                tint = SunsetOrangeBright,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "${weather.locationName} • ${WeatherCodeMapper.descriptionVietnamese(weather.weatherCode)}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        IconButton(
+            onClick = onRefresh,
+            enabled = !isRefreshing,
+            modifier = Modifier
+                .size(36.dp)
+                .testTag("refresh_weather_button")
+        ) {
+            if (isRefreshing) {
+                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = "Cập nhật thời tiết",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.WaterDrop, contentDescription = null, tint = SkyBlue, modifier = Modifier.size(14.dp))
+            Text(
+                text = " Mưa ${weather.todayRainProb}% • Ẩm ${weather.humidity}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Air, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            Text(
+                text = " Gió ${weather.windSpeedKmh} km/h",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    if (weather.dailyForecasts.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            weather.dailyForecasts.take(4).forEachIndexed { idx, f ->
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = if (idx == 0) "H.NAY" else f.date.forecastShortLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Spacer(modifier = Modifier.height(5.dp))
+                        WeatherIcon(weatherCode = f.weatherCode, size = 22.dp)
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "${f.precipitationProbability}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SkyBlue,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Text(
+                            text = "${f.tempMin}°/${f.tempMax}°",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -485,197 +704,5 @@ private fun SessionHeaderRow(
             fontWeight = FontWeight.Bold,
             color = tint
         )
-    }
-}
-
-@Composable
-private fun WeatherTodayCard(
-    weather: WeatherSnapshot?,
-    isRefreshing: Boolean,
-    onRefresh: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Rounded.LocationOn,
-                        contentDescription = null,
-                        tint = SunsetOrangeBright,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = weather?.locationName ?: "Hậu Lộc, Thanh Hóa",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                IconButton(
-                    onClick = onRefresh,
-                    enabled = !isRefreshing,
-                    modifier = Modifier.testTag("refresh_weather_button")
-                ) {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                    } else {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = "Cập nhật thời tiết",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            if (weather == null) {
-                Text(
-                    text = "Đang tải dữ liệu thời tiết Open-Meteo cho Hậu Lộc, Thanh Hóa...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        WeatherIcon(
-                            weatherCode = weather.weatherCode,
-                            isDay = weather.isDay,
-                            size = 42.dp
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "${weather.currentTemp}°C",
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                            Text(
-                                text = WeatherCodeMapper.descriptionVietnamese(weather.weatherCode),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "↑ ${weather.todayHigh}°  ↓ ${weather.todayLow}°",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.WaterDrop,
-                                contentDescription = null,
-                                tint = SkyBlue,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = " Mưa ${weather.todayRainProb}% • Ẩm ${weather.humidity}%",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.Air,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = " Gió ${weather.windSpeedKmh} km/h",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-
-                if (weather.dailyForecasts.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        weather.dailyForecasts.take(4).forEachIndexed { idx, f ->
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = when (idx) {
-                                            0 -> "H.NAY"
-                                            else -> f.date.forecastShortLabel
-                                        },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    WeatherIcon(weatherCode = f.weatherCode, size = 24.dp)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "${f.precipitationProbability}%",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = SkyBlue,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                    Text(
-                                        text = "${f.tempMin}°/${f.tempMax}°",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        softWrap = false
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }

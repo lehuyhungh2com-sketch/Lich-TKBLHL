@@ -123,7 +123,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
     val rootBgModifier = if (isTransparent) {
         GlanceModifier
     } else {
-        GlanceModifier.cornerRadius(24.dp).background(palette.backgroundColor)
+        GlanceModifier.cornerRadius(data.cornerRadiusDp.dp).background(palette.backgroundColor)
     }
 
     val isNarrow = size.width > 0.dp && size.width < 220.dp
@@ -360,36 +360,14 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                     modifier = GlanceModifier.defaultWeight()
                 )
 
-                val statusText: String?
-                val statusColor = when {
-                    teachingNow != null -> {
-                        val tag = if (teachingNow.isAfternoon) "C${teachingNow.period}" else "T${teachingNow.period}"
-                        val cls = TimetableCalculator.compactClassName(teachingNow.className)
-                        statusText = "● Đang dạy: $tag ($cls)"
-                        palette.liveNowAccent
-                    }
-                    nextPeriod != null -> {
-                        val tag = if (nextPeriod.isAfternoon) "C${nextPeriod.period}" else "T${nextPeriod.period}"
-                        statusText = "● Tiếp: $tag (${nextPeriod.startTime.formatHHmm()})"
-                        palette.accentOrange
-                    }
-                    data.isLoggedIn && !data.isSundayPreview && allPeriods.isNotEmpty() -> {
-                        statusText = "Đã xong hôm nay"
-                        palette.mutedPastText
-                    }
-                    else -> {
-                        statusText = null
-                        palette.secondaryText
-                    }
-                }
-
-                if (statusText != null) {
+                val liveBadge = data.liveStatusBadgeText()
+                if (liveBadge != null) {
                     Spacer(modifier = GlanceModifier.width(6.dp))
                     Text(
-                        text = statusText,
+                        text = liveBadge.first,
                         style = TextStyle(
-                            color = ColorProvider(statusColor),
-                            fontSize = 10.sp,
+                            color = ColorProvider(liveBadge.second),
+                            fontSize = (10f + data.fontDeltaSp * 0.4f).coerceAtLeast(9f).sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.End
                         ),
@@ -433,6 +411,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                     visible.forEachIndexed { idx, period ->
                         if (idx > 0) Spacer(modifier = GlanceModifier.height(4.dp))
                         TimetableGridTile(
+                            data = data,
                             period = period,
                             palette = palette,
                             modifier = GlanceModifier.fillMaxWidth()
@@ -454,6 +433,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             TimetableGridTile(
+                                data = data,
                                 period = pair[0],
                                 palette = palette,
                                 modifier = GlanceModifier.defaultWeight()
@@ -461,6 +441,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                             Spacer(modifier = GlanceModifier.width(6.dp))
                             if (pair.size > 1) {
                                 TimetableGridTile(
+                                    data = data,
                                     period = pair[1],
                                     palette = palette,
                                     modifier = GlanceModifier.defaultWeight()
@@ -552,38 +533,43 @@ private fun ForecastDayTile(
 
 @Composable
 private fun TimetableGridTile(
+    data: WidgetRenderData,
     period: ResolvedPeriod,
     palette: WidgetPalette,
     modifier: GlanceModifier = GlanceModifier
 ) {
+    val delta = data.fontDeltaSp
     val isNow = period.liveStatus == PeriodLiveStatus.TEACHING_NOW
     val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
     val isPast = period.liveStatus == PeriodLiveStatus.PAST
 
-    val shortClass = TimetableCalculator.compactClassName(period.className)
     val baseTag = if (period.isAfternoon) "C${period.period}" else "T${period.period}"
-    val periodLabel = if (isNow) "● $baseTag" else baseTag
+    val periodLabel = when {
+        isNow -> "● $baseTag"
+        isPast -> "✓ $baseTag"
+        else -> baseTag
+    }
 
     val tagColor = when {
         isNow -> palette.liveNowAccent
-        isNext -> palette.accentOrange
+        isNext -> palette.nextPeriodAccent
         isPast -> palette.mutedPastText
         period.isAfternoon -> palette.rainBlue
         else -> palette.accentOrange
     }
 
-    val textColor = when {
-        isNow -> palette.primaryText
-        isPast -> palette.mutedPastText
-        else -> palette.primaryText
-    }
+    val textColor = if (isPast) palette.mutedPastText else palette.primaryText
 
     val tileModifier = when {
-        palette.isFullyTransparent -> GlanceModifier.padding(vertical = 2.dp, horizontal = 2.dp)
         isNow -> GlanceModifier
             .cornerRadius(12.dp)
             .background(palette.liveNowBackground)
             .padding(horizontal = 7.dp, vertical = 5.dp)
+        isNext -> GlanceModifier
+            .cornerRadius(12.dp)
+            .background(palette.nextPeriodBackground)
+            .padding(horizontal = 7.dp, vertical = 5.dp)
+        palette.isFullyTransparent -> GlanceModifier.padding(vertical = 2.dp, horizontal = 2.dp)
         else -> GlanceModifier
             .cornerRadius(12.dp)
             .background(palette.cardTileBackground)
@@ -598,17 +584,17 @@ private fun TimetableGridTile(
             text = periodLabel,
             style = TextStyle(
                 color = ColorProvider(tagColor),
-                fontSize = 10.sp,
+                fontSize = (10f + delta * 0.7f).coerceAtLeast(9f).sp,
                 fontWeight = FontWeight.Bold
             ),
             maxLines = 1
         )
         Spacer(modifier = GlanceModifier.width(4.dp))
         Text(
-            text = "$shortClass · ${period.subjectName}",
+            text = data.formatPeriodTitle(period),
             style = TextStyle(
                 color = ColorProvider(textColor),
-                fontSize = 11.sp,
+                fontSize = (11f + delta * 0.8f).coerceAtLeast(9.5f).sp,
                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium
             ),
             maxLines = 1,

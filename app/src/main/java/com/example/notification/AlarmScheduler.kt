@@ -21,18 +21,31 @@ object AlarmScheduler {
     const val ACTION_PRE_SYNC = "com.example.action.PRE_SYNC"
     const val ACTION_PERIOD_REMINDER = "com.example.action.PERIOD_REMINDER"
     const val ACTION_WIDGET_PERIOD_TICK = "com.example.action.WIDGET_PERIOD_TICK"
+    const val ACTION_MIDNIGHT_ROLLOVER = "com.example.action.MIDNIGHT_ROLLOVER"
 
     const val EXTRA_PERIOD_NUM = "extra_period_num"
     const val EXTRA_CLASS_NAME = "extra_class_name"
     const val EXTRA_SUBJECT_NAME = "extra_subject_name"
     const val EXTRA_START_TIME = "extra_start_time"
     const val EXTRA_ROOM = "extra_room"
+    const val EXTRA_LEAD_MINUTES = "extra_lead_minutes"
 
     private const val REQ_DAILY_REMINDER = 1001
     private const val REQ_PRE_SYNC = 1002
+    private const val REQ_MIDNIGHT_ROLLOVER = 1003
     private const val REQ_PERIOD_BASE = 2000
     private const val REQ_WIDGET_TICK_BASE = 3000
     private const val WORK_PERIODIC_SYNC = "lhl_periodic_background_sync"
+    private const val WORK_PERIODIC_WIDGET_TICK = "lhl_periodic_widget_tick"
+
+    fun canScheduleExactAlarms(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            am.canScheduleExactAlarms()
+        } else {
+            true
+        }
+    }
 
     fun scheduleAll(
         context: Context,
@@ -40,6 +53,7 @@ object AlarmScheduler {
         reminderHour: Int,
         reminderMinute: Int,
         periodReminderEnabled: Boolean,
+        periodReminderLeadMinutes: Int = 10,
         todayPeriods: List<ResolvedPeriod>
     ) {
         if (dailyReminderEnabled) {
@@ -53,13 +67,15 @@ object AlarmScheduler {
         }
 
         if (periodReminderEnabled) {
-            scheduleTodayPeriodReminders(context, todayPeriods)
+            scheduleTodayPeriodReminders(context, todayPeriods, periodReminderLeadMinutes)
         } else {
             cancelTodayPeriodReminders(context)
         }
 
+        scheduleMidnightRollover(context)
         scheduleTodayWidgetPeriodTicks(context, todayPeriods)
         scheduleWorkManagerBackup(context)
+        schedulePeriodicWidgetRefresh(context)
     }
 
     fun scheduleDailyReminder(context: Context, hour: Int, minute: Int) {
@@ -78,13 +94,26 @@ object AlarmScheduler {
         setExactOrInexactAlarm(context, REQ_PRE_SYNC, triggerAt, intent)
     }
 
-    fun scheduleTodayPeriodReminders(context: Context, todayPeriods: List<ResolvedPeriod>) {
+    fun scheduleMidnightRollover(context: Context) {
+        val triggerAt = nextTriggerMillis(0, 1)
+        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            action = ACTION_MIDNIGHT_ROLLOVER
+        }
+        setExactOrInexactAlarm(context, REQ_MIDNIGHT_ROLLOVER, triggerAt, intent)
+    }
+
+    fun scheduleTodayPeriodReminders(
+        context: Context,
+        todayPeriods: List<ResolvedPeriod>,
+        leadMinutes: Int = 10
+    ) {
         cancelTodayPeriodReminders(context)
         val nowMillis = System.currentTimeMillis()
+        val safeLead = leadMinutes.coerceIn(5, 30)
 
         todayPeriods.forEachIndexed { idx, period ->
             if (idx >= 12) return@forEachIndexed
-            val notifyTime = period.startTime.plusMinutes(-10)
+            val notifyTime = period.startTime.plusMinutes(-safeLead)
             val cal = Calendar.getInstance(VIETNAM_TZ).apply {
                 set(Calendar.HOUR_OF_DAY, notifyTime.hour)
                 set(Calendar.MINUTE, notifyTime.minute)
@@ -99,6 +128,7 @@ object AlarmScheduler {
                     putExtra(EXTRA_SUBJECT_NAME, period.subjectName)
                     putExtra(EXTRA_START_TIME, period.startTime.formatHHmm())
                     putExtra(EXTRA_ROOM, period.room)
+                    putExtra(EXTRA_LEAD_MINUTES, safeLead)
                 }
                 setExactOrInexactAlarm(context, REQ_PERIOD_BASE + idx, cal.timeInMillis, intent)
             }
@@ -112,28 +142,29 @@ object AlarmScheduler {
     }
 
     /**
-     * Schedules silent widget refresh ticks at the exact start and end times of today's
-     * teaching periods so live "Đang dạy" / "Tiếp theo" indicators update automatically.
+     * Schedules silent widget refresh ticks at the exact start, end, and 10-min pre-start
+     * boundaries of today's teaching periods so live "Đang dạy" / "Tiếp theo" / "Đã dạy"
+     * states update cleanly in real time.
      */
     fun scheduleTodayWidgetPeriodTicks(context: Context, todayPeriods: List<ResolvedPeriod>) {
-        for (i in 0 until 20) {
+        for (i in 0 until 30) {
             cancelAlarm(context, REQ_WIDGET_TICK_BASE + i, ACTION_WIDGET_PERIOD_TICK)
         }
         if (todayPeriods.isEmpty()) return
 
         val nowMillis = System.currentTimeMillis()
         val boundaryTimes = todayPeriods
-            .flatMap { listOf(it.startTime, it.endTime) }
+            .flatMap { listOf(it.startTime.plusMinutes(-10), it.startTime, it.endTime) }
             .distinctBy { it.totalMinutes }
             .sortedBy { it.totalMinutes }
 
         var slotIdx = 0
         boundaryTimes.forEach { t ->
-            if (slotIdx >= 20) return@forEach
+            if (slotIdx >= 30) return@forEach
             val cal = Calendar.getInstance(VIETNAM_TZ).apply {
                 set(Calendar.HOUR_OF_DAY, t.hour)
                 set(Calendar.MINUTE, t.minute)
-                set(Calendar.SECOND, 3) // +3s so nowTime >= boundary cleanly
+                set(Calendar.SECOND, 2) // +2s so nowTime >= boundary cleanly
                 set(Calendar.MILLISECOND, 0)
             }
             if (cal.timeInMillis > nowMillis) {
@@ -160,6 +191,16 @@ object AlarmScheduler {
         )
     }
 
+    private fun schedulePeriodicWidgetRefresh(context: Context) {
+        val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(15, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            WORK_PERIODIC_WIDGET_TICK,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request
+        )
+    }
+
     private fun nextTriggerMillis(hour: Int, minute: Int): Long {
         val now = Calendar.getInstance(VIETNAM_TZ)
         val target = Calendar.getInstance(VIETNAM_TZ).apply {
@@ -181,32 +222,22 @@ object AlarmScheduler {
         intent: Intent
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val pendingIntent = PendingIntent.getBroadcast(
+        val pending = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            alarmManager.canScheduleExactAlarms()
-        } else {
-            true
-        }
-
         runCatching {
-            if (canExact) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
+                }
             } else {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                )
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pending)
             }
         }
     }
@@ -216,12 +247,15 @@ object AlarmScheduler {
         val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
             this.action = action
         }
-        val pendingIntent = PendingIntent.getBroadcast(
+        val pending = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
         )
-        alarmManager.cancel(pendingIntent)
+        if (pending != null) {
+            alarmManager.cancel(pending)
+            pending.cancel()
+        }
     }
 }

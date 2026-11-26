@@ -43,18 +43,25 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                         val subjectName = intent.getStringExtra(AlarmScheduler.EXTRA_SUBJECT_NAME).orEmpty()
                         val startTime = intent.getStringExtra(AlarmScheduler.EXTRA_START_TIME).orEmpty()
                         val room = intent.getStringExtra(AlarmScheduler.EXTRA_ROOM).orEmpty()
+                        val leadMinutes = intent.getIntExtra(AlarmScheduler.EXTRA_LEAD_MINUTES, 10)
                         NotificationHelper.showBeforePeriodNotification(
                             context = context,
                             periodNumber = period,
                             className = className,
                             subjectName = subjectName,
                             startTimeText = startTime,
-                            room = room
+                            room = room,
+                            leadMinutes = leadMinutes
                         )
                         WidgetUpdater.updateAllWidgets(context)
                     }
 
                     AlarmScheduler.ACTION_WIDGET_PERIOD_TICK -> {
+                        WidgetUpdater.updateAllWidgets(context)
+                    }
+
+                    AlarmScheduler.ACTION_MIDNIGHT_ROLLOVER -> {
+                        rescheduleFromLocal(context, app)
                         WidgetUpdater.updateAllWidgets(context)
                     }
                 }
@@ -71,7 +78,6 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         if (!prefs.dailyReminderEnabled) return
 
         val today = VnDate.today()
-        // Only send morning teaching notification on school days T2..T7
         if (today.isSunday) return
 
         val weekInfo = snapshot.weeks.firstOrNull { it.weekNumber == snapshot.weekNumber }
@@ -137,6 +143,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                 reminderHour = prefs.reminderHour,
                 reminderMinute = prefs.reminderMinute,
                 periodReminderEnabled = prefs.periodReminderEnabled,
+                periodReminderLeadMinutes = prefs.periodReminderLeadMinutes,
                 todayPeriods = todayPeriods
             )
         }
