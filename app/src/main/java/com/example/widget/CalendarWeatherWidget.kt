@@ -104,7 +104,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                     text = data.greeting,
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = 12.sp
+                        fontSize = data.sp(12f)
                     ),
                     maxLines = 1
                 )
@@ -128,7 +128,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                     text = data.solarDateText,
                     style = TextStyle(
                         color = ColorProvider(palette.primaryText),
-                        fontSize = 13.sp,
+                        fontSize = data.sp(13f),
                         fontWeight = FontWeight.Medium
                     ),
                     maxLines = 1
@@ -139,7 +139,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                         text = data.lunarBadgeText,
                         style = TextStyle(
                             color = ColorProvider(palette.pillText),
-                            fontSize = 11.sp,
+                            fontSize = data.sp(11f),
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
@@ -155,7 +155,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                             text = data.lunarBadgeText,
                             style = TextStyle(
                                 color = ColorProvider(palette.pillText),
-                                fontSize = 11.sp,
+                                fontSize = data.sp(11f),
                                 fontWeight = FontWeight.Medium
                             ),
                             maxLines = 1
@@ -176,7 +176,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                         text = data.weather?.let { "${it.currentTemp}°" } ?: "--°",
                         style = TextStyle(
                             color = ColorProvider(palette.primaryText),
-                            fontSize = 30.sp,
+                            fontSize = data.sp(30f, maxSp = 40f),
                             fontWeight = FontWeight.Bold
                         ),
                         maxLines = 1
@@ -187,7 +187,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                         ?: data.weatherDesc,
                     style = TextStyle(
                         color = ColorProvider(palette.primaryText),
-                        fontSize = 11.sp
+                        fontSize = data.sp(11f)
                     ),
                     maxLines = 1
                 )
@@ -196,7 +196,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                         ?: "Hậu Lộc",
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = 10.sp
+                        fontSize = data.sp(10f)
                     ),
                     maxLines = 1
                 )
@@ -222,7 +222,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                             text = if (idx == 0) "H.NAY" else f.date.forecastWeekdayLabel,
                             style = TextStyle(
                                 color = ColorProvider(palette.secondaryText),
-                                fontSize = 10.sp,
+                                fontSize = data.sp(10f),
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center
                             ),
@@ -240,7 +240,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                                 text = "${f.precipitationProbability}%",
                                 style = TextStyle(
                                     color = ColorProvider(palette.rainBlue),
-                                    fontSize = 10.sp,
+                                    fontSize = data.sp(10f),
                                     fontWeight = FontWeight.Medium
                                 ),
                                 maxLines = 1
@@ -250,7 +250,7 @@ private fun CalendarWeatherWidgetContent(data: WidgetRenderData) {
                             text = "${f.tempMin}°/${f.tempMax}°",
                             style = TextStyle(
                                 color = ColorProvider(palette.primaryText),
-                                fontSize = 11.sp,
+                                fontSize = data.sp(11f),
                                 fontWeight = FontWeight.Medium
                             ),
                             maxLines = 1

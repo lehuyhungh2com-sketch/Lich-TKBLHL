@@ -6,8 +6,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.FilterDrama
 import androidx.compose.material.icons.rounded.Grain
 import androidx.compose.material.icons.rounded.LocationOn
@@ -45,13 +50,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.rounded.EditNote
 import com.example.data.local.WidgetCornerStyle
-import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.data.remote.WeatherCodeMapper
 import com.example.domain.lunar.LunarCalendar
@@ -91,6 +95,7 @@ fun <T> SegmentedOptionBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(IntrinsicSize.Min)
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -106,19 +111,20 @@ fun <T> SegmentedOptionBar(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .weight(1f)
+                        .fillMaxHeight()
                         .clip(RoundedCornerShape(10.dp))
                         .background(bg)
                         .clickable { onSelect(option.value) }
                         .then(if (option.testTag.isNotBlank()) Modifier.testTag(option.testTag) else Modifier)
-                        .padding(vertical = 10.dp, horizontal = 4.dp)
+                        .padding(vertical = 9.dp, horizontal = 6.dp)
                 ) {
                     Text(
                         text = option.label,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         color = fg,
-                        maxLines = 1,
-                        softWrap = false,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -170,6 +176,7 @@ fun HomeroomModeToggle(
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PeriodRowCard(
     period: ResolvedPeriod,
@@ -186,12 +193,14 @@ fun PeriodRowCard(
     val containerColor = when {
         isNow -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f)
         isNext -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+        period.isChanged -> SunsetOrange.copy(alpha = 0.10f)
         else -> MaterialTheme.colorScheme.surface
     }
 
     val borderStroke = when {
         isNow -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.tertiary)
         isNext -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        period.isChanged -> BorderStroke(1.5.dp, SunsetOrange)
         else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     }
 
@@ -260,9 +269,9 @@ fun PeriodRowCard(
             Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = if (showTeacherName) period.subjectName else "$shortClass • ${period.subjectName}",
@@ -271,8 +280,7 @@ fun PeriodRowCard(
                         color = if (isPast) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         else MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        overflow = TextOverflow.Ellipsis
                     )
 
                     if (isNow) {
@@ -288,13 +296,21 @@ fun PeriodRowCard(
                             fg = Color.White
                         )
                     }
+
+                    if (period.isChanged) {
+                        StatusTagPill(
+                            text = "MỚI ĐỔI",
+                            bg = SunsetOrange,
+                            fg = Color.White
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(3.dp))
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -307,7 +323,8 @@ fun PeriodRowCard(
                         Text(
                             text = period.timeRangeText,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
                         )
                     }
 
@@ -317,7 +334,7 @@ fun PeriodRowCard(
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                     } else if (period.room.isNotBlank()) {
@@ -333,7 +350,7 @@ fun PeriodRowCard(
                                 text = period.room,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -493,7 +510,7 @@ fun LiveWidgetPreviewCard(
     opacity: Float,
     textTheme: WidgetTextTheme,
     cornerStyle: WidgetCornerStyle = WidgetCornerStyle.ROUNDED,
-    fontSize: WidgetFontSize = WidgetFontSize.MEDIUM,
+    fontScale: Float = 1.0f,
     showSubject: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -517,6 +534,7 @@ fun LiveWidgetPreviewCard(
     val dividerColor = if (useLightText) Color(0x38FFFFFF) else Color(0x28000000)
 
     val lunar = LunarCalendar.convertSolar2Lunar(today)
+    fun sp(base: Float) = (base * fontScale).coerceIn(8.5f, 36f).sp
 
     Box(
         modifier = modifier
@@ -545,13 +563,14 @@ fun LiveWidgetPreviewCard(
             Column(modifier = Modifier.width(106.dp)) {
                 Text(
                     text = now.formatHHmm(),
-                    style = MaterialTheme.typography.headlineMedium,
+                    fontSize = sp(26f),
                     fontWeight = FontWeight.Bold,
                     color = primaryText
                 )
                 Text(
                     text = "${today.vietnameseWeekday}, ${today.formatDayMonth()}",
-                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = sp(11.5f),
+                    fontWeight = FontWeight.Medium,
                     color = primaryText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -560,8 +579,7 @@ fun LiveWidgetPreviewCard(
                 if (isTransparent) {
                     Text(
                         text = lunar.formatBadge(),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = 10.sp,
+                        fontSize = sp(10f),
                         color = lunarText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -573,8 +591,7 @@ fun LiveWidgetPreviewCard(
                     ) {
                         Text(
                             text = lunar.formatBadge(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
+                            fontSize = sp(10f),
                             color = Color.White,
                             maxLines = 1,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
@@ -593,7 +610,7 @@ fun LiveWidgetPreviewCard(
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = weather?.let { "${it.currentTemp}°" } ?: "16°",
-                        style = MaterialTheme.typography.titleLarge,
+                        fontSize = sp(21f),
                         fontWeight = FontWeight.Bold,
                         color = primaryText
                     )
@@ -603,15 +620,13 @@ fun LiveWidgetPreviewCard(
                         val desc = WeatherCodeMapper.descriptionVietnamese(it.weatherCode)
                         if (it.todayRainProb > 0) "$desc · ${it.todayRainProb}%" else desc
                     } ?: "Ít mây",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontSize = 10.sp,
+                    fontSize = sp(10f),
                     color = secondaryText,
                     maxLines = 1
                 )
                 Text(
                     text = "${weather?.locationName ?: "Hậu Lộc"} · ${weather?.todayLow ?: 15}°/${weather?.todayHigh ?: 23}°",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontSize = 10.sp,
+                    fontSize = sp(10f),
                     color = secondaryText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -624,7 +639,7 @@ fun LiveWidgetPreviewCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Lịch dạy · Tuần $weekNumber",
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = sp(11f),
                     fontWeight = FontWeight.Bold,
                     color = accentOrange
                 )
@@ -633,11 +648,12 @@ fun LiveWidgetPreviewCard(
                 if (todayPeriods.isEmpty()) {
                     Text(
                         text = "Hôm nay không có tiết dạy",
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = sp(11.5f),
                         color = secondaryText
                     )
                 } else {
                     val visible = todayPeriods.take(5)
+                    val tagWidth = (28f * fontScale.coerceAtLeast(1f)).dp
                     visible.forEachIndexed { idx, p ->
                         Row(
                             modifier = Modifier
@@ -647,10 +663,11 @@ fun LiveWidgetPreviewCard(
                         ) {
                             Text(
                                 text = if (p.isAfternoon) "C${p.period}" else "T${p.period}",
-                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = sp(10.5f),
                                 fontWeight = FontWeight.Bold,
                                 color = if (p.isAfternoon) SkyBlue else accentOrange,
-                                modifier = Modifier.width(24.dp)
+                                maxLines = 1,
+                                modifier = Modifier.width(tagWidth)
                             )
                             Text(
                                 text = if (showSubject) {
@@ -658,7 +675,7 @@ fun LiveWidgetPreviewCard(
                                 } else {
                                     "Lớp ${TimetableCalculator.compactClassName(p.className)}"
                                 },
-                                fontSize = (12f + fontSize.deltaSp).sp,
+                                fontSize = sp(11.5f),
                                 fontWeight = FontWeight.Medium,
                                 color = primaryText,
                                 maxLines = 1,
@@ -668,8 +685,9 @@ fun LiveWidgetPreviewCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = p.startTime.formatHHmm(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = secondaryText
+                                fontSize = sp(10.5f),
+                                color = secondaryText,
+                                maxLines = 1
                             )
                         }
                         if (idx < visible.lastIndex) {
@@ -692,7 +710,7 @@ fun LiveWeatherTimetablePreviewCard(
     opacity: Float,
     textTheme: WidgetTextTheme,
     cornerStyle: WidgetCornerStyle = WidgetCornerStyle.ROUNDED,
-    fontSize: WidgetFontSize = WidgetFontSize.MEDIUM,
+    fontScale: Float = 1.0f,
     showSubject: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -721,6 +739,7 @@ fun LiveWeatherTimetablePreviewCard(
     val lunar = LunarCalendar.convertSolar2Lunar(today)
     val lunarShort = "${lunar.day}/${lunar.month}${if (lunar.isLeap) "N" else ""} ÂL"
     val locName = weather?.locationName ?: "Hậu Lộc"
+    fun sp(base: Float) = (base * fontScale).coerceIn(8.5f, 36f).sp
 
     Box(
         modifier = modifier
@@ -758,7 +777,7 @@ fun LiveWeatherTimetablePreviewCard(
                 Spacer(modifier = Modifier.width(3.dp))
                 Text(
                     text = "$locName · ${today.shortDayCode}, ${today.formatDayMonth()} ($lunarShort)",
-                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = sp(12f),
                     fontWeight = FontWeight.Bold,
                     color = primaryText,
                     maxLines = 1,
@@ -792,14 +811,14 @@ fun LiveWeatherTimetablePreviewCard(
                     Column {
                         Text(
                             text = "${weather?.currentTemp ?: 16}°C",
-                            style = MaterialTheme.typography.titleLarge,
+                            fontSize = sp(22f),
                             fontWeight = FontWeight.Bold,
                             color = primaryText,
                             maxLines = 1
                         )
                         Text(
                             text = weather?.let { WeatherCodeMapper.descriptionVietnamese(it.weatherCode) } ?: "Ít mây",
-                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = sp(11f),
                             color = secondaryText,
                             maxLines = 1
                         )
@@ -809,7 +828,7 @@ fun LiveWeatherTimetablePreviewCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "↑ ${weather?.todayHigh ?: 23}°  ↓ ${weather?.todayLow ?: 15}°",
-                        style = MaterialTheme.typography.labelMedium,
+                        fontSize = sp(12f),
                         fontWeight = FontWeight.Bold,
                         color = primaryText,
                         maxLines = 1
@@ -823,7 +842,7 @@ fun LiveWeatherTimetablePreviewCard(
                         )
                         Text(
                             text = " Mưa ${weather?.todayRainProb ?: 0}% · Ẩm ${weather?.humidity ?: 71}%",
-                            fontSize = 10.sp,
+                            fontSize = sp(10f),
                             color = secondaryText,
                             maxLines = 1
                         )
@@ -837,7 +856,7 @@ fun LiveWeatherTimetablePreviewCard(
                         )
                         Text(
                             text = " Gió ${weather?.windSpeedKmh ?: 12} km/h",
-                            fontSize = 10.sp,
+                            fontSize = sp(10f),
                             color = secondaryText,
                             maxLines = 1
                         )
@@ -867,7 +886,7 @@ fun LiveWeatherTimetablePreviewCard(
                         ) {
                             Text(
                                 text = if (idx == 0) "H.NAY" else f.date.forecastShortLabel,
-                                fontSize = 9.sp,
+                                fontSize = sp(9.5f),
                                 fontWeight = FontWeight.Bold,
                                 color = secondaryText,
                                 maxLines = 1,
@@ -878,13 +897,13 @@ fun LiveWeatherTimetablePreviewCard(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "${f.precipitationProbability}%",
-                                fontSize = 9.sp,
+                                fontSize = sp(9.5f),
                                 color = SkyBlue,
                                 maxLines = 1
                             )
                             Text(
                                 text = "${f.tempMin}°/${f.tempMax}°",
-                                fontSize = 9.sp,
+                                fontSize = sp(9.5f),
                                 fontWeight = FontWeight.Bold,
                                 color = primaryText,
                                 maxLines = 1,
@@ -909,7 +928,7 @@ fun LiveWeatherTimetablePreviewCard(
             ) {
                 Text(
                     text = "Lịch dạy · Tuần $weekNumber",
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = sp(11f),
                     fontWeight = FontWeight.Bold,
                     color = accentOrange,
                     modifier = Modifier.weight(1f),
@@ -923,7 +942,7 @@ fun LiveWeatherTimetablePreviewCard(
                 if (statusLabel != null) {
                     Text(
                         text = statusLabel,
-                        fontSize = 10.sp,
+                        fontSize = sp(10f),
                         fontWeight = FontWeight.Bold,
                         color = if (teachingNow != null) liveAccent else accentOrange,
                         maxLines = 1
@@ -936,7 +955,7 @@ fun LiveWeatherTimetablePreviewCard(
             if (todayPeriods.isEmpty()) {
                 Text(
                     text = "Hôm nay không có tiết dạy",
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = sp(11f),
                     color = secondaryText
                 )
             } else {
@@ -970,7 +989,7 @@ fun LiveWeatherTimetablePreviewCard(
                                 ) {
                                     Text(
                                         text = if (isNow) "● $tag" else tag,
-                                        fontSize = 10.sp,
+                                        fontSize = sp(10f),
                                         fontWeight = FontWeight.Bold,
                                         color = tagColor,
                                         maxLines = 1
@@ -982,7 +1001,7 @@ fun LiveWeatherTimetablePreviewCard(
                                         } else {
                                             "Lớp ${TimetableCalculator.compactClassName(p.className)}"
                                         },
-                                        fontSize = (10f + fontSize.deltaSp * 0.7f).sp,
+                                        fontSize = sp(11f),
                                         fontWeight = if (isNow) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isPast) mutedPastText else primaryText,
                                         maxLines = 1,

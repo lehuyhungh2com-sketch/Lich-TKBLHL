@@ -6,11 +6,13 @@ import com.example.data.local.LessonNoteEntity
 import com.example.data.local.LocalJson
 import com.example.data.local.SchoolDao
 import com.example.data.local.SyncMetadataEntity
+import com.example.data.local.TimetableSlotSnapshotEntity
 import com.example.data.local.WeekSyncVersionEntity
 import com.example.data.local.toEntity
 import com.example.data.remote.FirestoreReadOnlyClient
 import com.example.domain.lunar.VnDate
 import com.example.domain.model.Assignment
+import com.example.domain.model.CalendarEvent
 import com.example.domain.model.SchoolClass
 import com.example.domain.model.SchoolConfig
 import com.example.domain.model.Subject
@@ -68,8 +70,17 @@ class SchoolRepository(
     val lessonNotesFlow: Flow<Map<String, String>> = dao.observeLessonNotes()
         .map { list -> list.associate { it.noteKey to it.content } }
 
+    val allSlotsFlow: Flow<List<TimetableSlot>> = dao.observeAllSlots()
+        .map { list -> list.map { it.toDomain() } }
+
+    val calendarEventsFlow: Flow<List<CalendarEvent>> = dao.observeCalendarEvents()
+        .map { list -> list.map { it.toDomain() } }
+
     fun observeSlotsForWeek(week: Int): Flow<List<TimetableSlot>> =
         dao.observeSlotsForWeek(week).map { list -> list.map { it.toDomain() } }
+
+    fun observeSlotSnapshotForWeek(week: Int): Flow<List<TimetableSlot>> =
+        dao.observeSlotSnapshotForWeek(week).map { it?.toDomainSlots().orEmpty() }
 
     suspend fun saveLessonNote(
         week: Int,
@@ -107,6 +118,22 @@ class SchoolRepository(
         classId: String
     ) = withContext(Dispatchers.IO) {
         dao.deleteLessonNote(LessonNoteEntity.buildKey(week, day, period, session, classId))
+    }
+
+    suspend fun saveCalendarEvent(event: CalendarEvent) = withContext(Dispatchers.IO) {
+        val trimmedTitle = event.title.trim()
+        if (trimmedTitle.isEmpty()) return@withContext
+        val toSave = event.copy(
+            title = trimmedTitle,
+            note = event.note.trim(),
+            timeLabel = event.timeLabel.trim(),
+            createdAtMillis = if (event.createdAtMillis > 0L) event.createdAtMillis else System.currentTimeMillis()
+        )
+        dao.upsertCalendarEvent(toSave.toEntity())
+    }
+
+    suspend fun deleteCalendarEvent(id: Long) = withContext(Dispatchers.IO) {
+        dao.deleteCalendarEvent(id)
     }
 
     fun isFirebaseConfigured(): Boolean = firestore.isFirebaseConfigured()
@@ -318,7 +345,17 @@ class SchoolRepository(
                 localWeekVersion.slotsVersion != remoteMeta.slotsVersion
 
             if (needSlotsFetch) {
+                val previousLocalSlots = dao.getSlotsForWeek(weekToSync).map { it.toDomain() }
                 val slots = firestore.fetchTimetablesForWeek(weekToSync)
+                if (previousLocalSlots.isNotEmpty() && previousLocalSlots.toSet() != slots.toSet()) {
+                    dao.upsertSlotSnapshot(
+                        TimetableSlotSnapshotEntity(
+                            week = weekToSync,
+                            slotsJson = LocalJson.slotsToJson(previousLocalSlots),
+                            savedAtMillis = System.currentTimeMillis()
+                        )
+                    )
+                }
                 dao.replaceSlotsForWeek(weekToSync, slots.map { it.toEntity() })
                 dao.upsertWeekSyncVersion(
                     WeekSyncVersionEntity(

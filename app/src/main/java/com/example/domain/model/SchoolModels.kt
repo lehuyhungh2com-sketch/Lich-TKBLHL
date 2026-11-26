@@ -140,10 +140,80 @@ data class ResolvedPeriod(
     val customLabel: String?,
     val startTime: VnTime,
     val endTime: VnTime,
-    val liveStatus: PeriodLiveStatus = PeriodLiveStatus.UPCOMING
+    val liveStatus: PeriodLiveStatus = PeriodLiveStatus.UPCOMING,
+    val isChanged: Boolean = false
 ) {
     val isAfternoon: Boolean get() = session == "afternoon"
     val timeRangeText: String get() = "${startTime.formatHHmm()} – ${endTime.formatHHmm()}"
+}
+
+enum class CalendarEventCategory(val key: String, val label: String) {
+    MEETING("meeting", "Họp chuyên môn"),
+    EXAM("exam", "Coi thi / Kiểm tra"),
+    ANNIVERSARY("anniversary", "Kỷ niệm"),
+    OTHER("other", "Công việc khác");
+
+    companion object {
+        fun fromKey(key: String?): CalendarEventCategory =
+            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: OTHER
+    }
+}
+
+data class CalendarEvent(
+    val id: Long = 0L,
+    val title: String,
+    val note: String = "",
+    val category: CalendarEventCategory = CalendarEventCategory.MEETING,
+    val isLunar: Boolean = false,
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val isRecurringYearly: Boolean = false,
+    val timeLabel: String = "",
+    val createdAtMillis: Long = 0L
+)
+
+data class WorkloadBreakdownRow(
+    val key: String,
+    val label: String,
+    val weekMorning: Int,
+    val weekAfternoon: Int,
+    val assignedPerWeek: Int,
+    val yearMorning: Int,
+    val yearAfternoon: Int
+) {
+    val weekTotal: Int get() = weekMorning + weekAfternoon
+    val yearTotal: Int get() = yearMorning + yearAfternoon
+}
+
+data class WorkloadStatsSummary(
+    val selectedWeek: Int = 1,
+    val weekMorningCount: Int = 0,
+    val weekAfternoonCount: Int = 0,
+    val weekAssignedQuota: Int = 0,
+    val yearCachedWeeksCount: Int = 0,
+    val yearCachedWeeksList: List<Int> = emptyList(),
+    val yearMorningCount: Int = 0,
+    val yearAfternoonCount: Int = 0,
+    val byClass: List<WorkloadBreakdownRow> = emptyList(),
+    val bySubject: List<WorkloadBreakdownRow> = emptyList()
+) {
+    val weekTotalCount: Int get() = weekMorningCount + weekAfternoonCount
+    val yearTotalCount: Int get() = yearMorningCount + yearAfternoonCount
+}
+
+data class SubstituteSuggestion(
+    val teacher: Teacher,
+    val teachesSameClass: Boolean,
+    val sameDepartment: Boolean,
+    val sameSubject: Boolean,
+    val swapSlotHint: String? = null
+) {
+    val priorityScore: Int
+        get() = (if (teachesSameClass) 4 else 0) +
+            (if (sameDepartment) 2 else 0) +
+            (if (sameSubject) 1 else 0) +
+            (if (swapSlotHint != null) 2 else 0)
 }
 
 data class DailyForecast(

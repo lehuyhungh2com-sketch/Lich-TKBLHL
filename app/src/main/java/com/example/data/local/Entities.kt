@@ -4,6 +4,8 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.example.domain.lunar.VnDate
 import com.example.domain.model.Assignment
+import com.example.domain.model.CalendarEvent
+import com.example.domain.model.CalendarEventCategory
 import com.example.domain.model.DailyForecast
 import com.example.domain.model.SchoolClass
 import com.example.domain.model.SchoolConfig
@@ -38,6 +40,9 @@ object LocalJson {
     private val listForecastAdapter = moshi.adapter<List<DailyForecastDto>>(
         Types.newParameterizedType(List::class.java, DailyForecastDto::class.java)
     )
+    private val listSlotAdapter = moshi.adapter<List<TimetableSlot>>(
+        Types.newParameterizedType(List::class.java, TimetableSlot::class.java)
+    )
 
     fun mapToJson(map: Map<String, String>): String = mapStringStringAdapter.toJson(map)
     fun jsonToMap(json: String?): Map<String, String> =
@@ -54,6 +59,10 @@ object LocalJson {
     fun assignmentsToJson(list: List<Assignment>?): String? = list?.let { listAssignmentAdapter.toJson(it) }
     fun jsonToAssignments(json: String?): List<Assignment>? =
         if (json.isNullOrBlank()) null else runCatching { listAssignmentAdapter.fromJson(json) }.getOrNull()
+
+    fun slotsToJson(list: List<TimetableSlot>): String = listSlotAdapter.toJson(list)
+    fun jsonToSlots(json: String?): List<TimetableSlot> =
+        if (json.isNullOrBlank()) emptyList() else runCatching { listSlotAdapter.fromJson(json) }.getOrNull().orEmpty()
 
     fun forecastsToJson(list: List<DailyForecast>): String {
         val dtos = list.map {
@@ -402,4 +411,56 @@ data class LessonNoteEntity(
             "w${week}_${day}_${session}_p${period}_${classId.trim().lowercase()}"
     }
 }
+
+@Entity(tableName = "timetable_slot_snapshots")
+data class TimetableSlotSnapshotEntity(
+    @PrimaryKey val week: Int,
+    val slotsJson: String,
+    val savedAtMillis: Long
+) {
+    fun toDomainSlots(): List<TimetableSlot> = LocalJson.jsonToSlots(slotsJson)
+}
+
+@Entity(tableName = "calendar_events")
+data class CalendarEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val title: String,
+    val note: String,
+    val category: String,
+    val isLunar: Boolean,
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val isRecurringYearly: Boolean,
+    val timeLabel: String,
+    val createdAtMillis: Long
+) {
+    fun toDomain() = CalendarEvent(
+        id = id,
+        title = title,
+        note = note,
+        category = CalendarEventCategory.fromKey(category),
+        isLunar = isLunar,
+        year = year,
+        month = month,
+        day = day,
+        isRecurringYearly = isRecurringYearly,
+        timeLabel = timeLabel,
+        createdAtMillis = createdAtMillis
+    )
+}
+
+fun CalendarEvent.toEntity() = CalendarEventEntity(
+    id = id,
+    title = title,
+    note = note,
+    category = category.key,
+    isLunar = isLunar,
+    year = year,
+    month = month,
+    day = day,
+    isRecurringYearly = isRecurringYearly,
+    timeLabel = timeLabel,
+    createdAtMillis = createdAtMillis
+)
 

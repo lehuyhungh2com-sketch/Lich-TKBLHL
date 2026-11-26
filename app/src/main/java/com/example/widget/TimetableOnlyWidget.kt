@@ -76,7 +76,6 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
     val context = LocalContext.current
     val size = LocalSize.current
     val palette = data.palette
-    val delta = data.fontDeltaSp
     val radius = data.cornerRadiusDp.dp
 
     val openTimetableAction = actionStartActivity(
@@ -127,7 +126,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                     text = titleText,
                     style = TextStyle(
                         color = ColorProvider(palette.accentOrange),
-                        fontSize = (13f + delta).coerceAtLeast(11f).sp,
+                        fontSize = data.sp(13f, minSp = 10f),
                         fontWeight = FontWeight.Bold
                     ),
                     maxLines = 1
@@ -136,7 +135,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                     text = "${data.solarDateText} (${data.lunarShortText})",
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = (10f + delta * 0.5f).coerceAtLeast(9f).sp
+                        fontSize = data.sp(10f)
                     ),
                     maxLines = 1
                 )
@@ -147,7 +146,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                     text = data.teacherName,
                     style = TextStyle(
                         color = ColorProvider(palette.primaryText),
-                        fontSize = (11f + delta * 0.5f).coerceAtLeast(10f).sp,
+                        fontSize = data.sp(11f, minSp = 9.5f),
                         fontWeight = FontWeight.Medium
                     ),
                     maxLines = 1
@@ -189,7 +188,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                     text = liveBadge.first,
                     style = TextStyle(
                         color = ColorProvider(liveBadge.second),
-                        fontSize = (10.5f + delta * 0.5f).coerceAtLeast(9.5f).sp,
+                        fontSize = data.sp(10.5f, minSp = 9f),
                         fontWeight = FontWeight.Bold
                     ),
                     maxLines = 1
@@ -206,7 +205,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                     text = "Chạm để đăng nhập tài khoản giáo viên THCS Lê Hữu Lập.",
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = 12.sp
+                        fontSize = data.sp(12f)
                     ),
                     maxLines = 2
                 )
@@ -221,7 +220,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                     },
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = 12.sp
+                        fontSize = data.sp(12f)
                     ),
                     maxLines = 2
                 )
@@ -235,8 +234,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                     }
                     ModernTimetableRow(
                         data = data,
-                        period = period,
-                        delta = delta
+                        period = period
                     )
                 }
                 if (allPeriods.size > maxVisible) {
@@ -245,7 +243,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
                         text = "+${allPeriods.size - maxVisible} tiết nữa trong ngày...",
                         style = TextStyle(
                             color = ColorProvider(palette.secondaryText),
-                            fontSize = 10.sp
+                            fontSize = data.sp(10f)
                         ),
                         maxLines = 1
                     )
@@ -258,8 +256,7 @@ private fun TimetableOnlyWidgetContent(data: WidgetRenderData) {
 @Composable
 private fun ModernTimetableRow(
     data: WidgetRenderData,
-    period: ResolvedPeriod,
-    delta: Float
+    period: ResolvedPeriod
 ) {
     val palette = data.palette
     val isNow = period.liveStatus == PeriodLiveStatus.TEACHING_NOW
@@ -308,6 +305,7 @@ private fun ModernTimetableRow(
         isPast -> palette.mutedPastText
         else -> palette.secondaryText
     }
+    val tagColWidth = (38f * data.fontScale.coerceAtLeast(1f)).dp
 
     Row(
         modifier = GlanceModifier
@@ -319,17 +317,17 @@ private fun ModernTimetableRow(
             text = tagText,
             style = TextStyle(
                 color = ColorProvider(tagColor),
-                fontSize = (11.5f + delta).coerceAtLeast(10f).sp,
+                fontSize = data.sp(11.5f, minSp = 9.5f),
                 fontWeight = FontWeight.Bold
             ),
             maxLines = 1,
-            modifier = GlanceModifier.width(38.dp)
+            modifier = GlanceModifier.width(tagColWidth)
         )
         Text(
             text = data.formatPeriodTitle(period),
             style = TextStyle(
                 color = ColorProvider(mainTextColor),
-                fontSize = (12f + delta).coerceAtLeast(10.5f).sp,
+                fontSize = data.sp(12f, minSp = 10f),
                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium
             ),
             maxLines = 1,
@@ -340,7 +338,7 @@ private fun ModernTimetableRow(
             text = timeText,
             style = TextStyle(
                 color = ColorProvider(timeColor),
-                fontSize = (10.5f + delta * 0.5f).coerceAtLeast(9.5f).sp,
+                fontSize = data.sp(10.5f, minSp = 9f),
                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Normal,
                 textAlign = TextAlign.End
             ),

@@ -20,12 +20,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Class
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -51,16 +54,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.domain.model.Assignment
 import com.example.domain.model.PeriodLiveStatus
 import com.example.domain.model.ResolvedPeriod
 import com.example.domain.model.SchoolClass
+import com.example.domain.model.SubstituteSuggestion
 import com.example.domain.model.Teacher
 import com.example.domain.model.TimetableCalculator
 import com.example.ui.MainUiState
 import com.example.ui.components.PeriodRowCard
 import com.example.ui.components.SegmentOption
 import com.example.ui.components.SegmentedOptionBar
+import com.example.ui.components.StatusTagPill
 import com.example.ui.components.TimetableExportSheet
+import com.example.ui.theme.EmeraldLive
 
 /**
  * Offline school-wide lookup tool powered by already-synced Room data (zero extra Firestore reads):
@@ -72,11 +79,13 @@ import com.example.ui.components.TimetableExportSheet
 fun SchoolLookupSheet(
     uiState: MainUiState,
     onDismiss: () -> Unit,
-    onNotify: (String) -> Unit
+    onNotify: (String) -> Unit,
+    initialTab: Int = 0,
+    initialSwapSlotId: String? = null
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var activeTab by remember { mutableIntStateOf(0) }
+    var activeTab by remember(initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 2)) }
 
     val defaultClassId = uiState.homeroomClassId
         ?: uiState.allClasses.firstOrNull()?.id.orEmpty()
@@ -99,6 +108,8 @@ fun SchoolLookupSheet(
         mutableIntStateOf(activePeriodNow?.period ?: 1)
     }
     var searchQuery by remember { mutableStateOf("") }
+    var swapSearchQuery by remember { mutableStateOf("") }
+    var selectedSwapSlotId by remember(initialSwapSlotId) { mutableStateOf(initialSwapSlotId) }
     var pendingExportClass by remember { mutableStateOf<Pair<SchoolClass, List<ResolvedPeriod>>?>(null) }
 
     ModalBottomSheet(
@@ -118,7 +129,7 @@ fun SchoolLookupSheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Tra cứu TKB nhà trường",
+                        text = "Tra cứu & Đổi tiết",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -137,8 +148,9 @@ fun SchoolLookupSheet(
 
             SegmentedOptionBar(
                 options = listOf(
-                    SegmentOption(0, "TKB theo Lớp", "lookup_tab_class"),
-                    SegmentOption(1, "GV dạy / Trống tiết", "lookup_tab_teachers")
+                    SegmentOption(0, "TKB Lớp", "lookup_tab_class"),
+                    SegmentOption(1, "Đổi tiết / Dạy thay", "lookup_tab_swap"),
+                    SegmentOption(2, "GV trống tiết", "lookup_tab_teachers")
                 ),
                 selected = activeTab,
                 onSelect = { activeTab = it }
@@ -146,8 +158,8 @@ fun SchoolLookupSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (activeTab == 0) {
-                ClassTimetableLookupContent(
+            when (activeTab) {
+                0 -> ClassTimetableLookupContent(
                     uiState = uiState,
                     selectedClassId = selectedClassId,
                     onSelectClass = { selectedClassId = it },
@@ -159,8 +171,16 @@ fun SchoolLookupSheet(
                         }
                     }
                 )
-            } else {
-                TeacherAvailabilityLookupContent(
+
+                1 -> SwapSubstituteLookupContent(
+                    uiState = uiState,
+                    selectedSlotId = selectedSwapSlotId,
+                    onSelectSlot = { selectedSwapSlotId = it },
+                    searchQuery = swapSearchQuery,
+                    onSearchChange = { swapSearchQuery = it }
+                )
+
+                else -> TeacherAvailabilityLookupContent(
                     allTeachers = uiState.allTeachers,
                     weekPeriods = uiState.allSelectedWeekPeriods,
                     selectedDay = lookupDay,
@@ -567,6 +587,267 @@ private fun TeacherAvailabilityLookupContent(
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SwapSubstituteLookupContent(
+    uiState: MainUiState,
+    selectedSlotId: String?,
+    onSelectSlot: (String) -> Unit,
+    searchQuery: String,
+    onSearchChange: (String) -> Unit
+) {
+    val myPeriods = remember(uiState.allSelectedWeekPeriods, uiState.selectedWeekPeriods, uiState.currentTeacher?.id) {
+        val teacherId = uiState.currentTeacher?.id
+        val own = if (teacherId != null) {
+            uiState.allSelectedWeekPeriods.filter { it.teacherId == teacherId }
+        } else {
+            emptyList()
+        }
+        own.ifEmpty { uiState.selectedWeekPeriods }
+    }
+
+    if (myPeriods.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Bạn chưa có tiết dạy nào trong Tuần ${uiState.selectedWeekNumber} để tìm người đổi tiết.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
+    val selectedPeriod = myPeriods.firstOrNull { it.slotId == selectedSlotId } ?: myPeriods.first()
+
+    Text(
+        text = "1. Chọn tiết của bạn cần đổi hoặc nhờ dạy thay:",
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        myPeriods.forEach { p ->
+            val isSelected = p.slotId == selectedPeriod.slotId
+            val sesShort = if (p.isAfternoon) "C" else "S"
+            val clsShort = TimetableCalculator.compactClassName(p.className)
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelectSlot(p.slotId) },
+                label = { Text("${p.day} $sesShort.T${p.period} · $clsShort") },
+                modifier = Modifier.testTag("swap_period_chip_${p.slotId}")
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    val targetCls = TimetableCalculator.compactClassName(selectedPeriod.className)
+    val targetSessionLabel = if (selectedPeriod.isAfternoon) "Chiều" else "Sáng"
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.SwapHoriz,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Đang tìm người thay: ${selectedPeriod.day} $targetSessionLabel Tiết ${selectedPeriod.period}",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(
+                    text = "Lớp $targetCls • ${selectedPeriod.subjectName} (${selectedPeriod.timeRangeText})",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    OutlinedTextField(
+        value = searchQuery,
+        onValueChange = onSearchChange,
+        placeholder = { Text("Lọc tên giáo viên hoặc tổ chuyên môn...") },
+        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+        singleLine = true,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    val suggestions = remember(
+        selectedPeriod,
+        uiState.currentTeacher,
+        uiState.allTeachers,
+        uiState.allSelectedWeekPeriods,
+        uiState.allAssignments,
+        searchQuery
+    ) {
+        val raw = TimetableCalculator.suggestSubstituteTeachers(
+            targetPeriod = selectedPeriod,
+            requesterTeacher = uiState.currentTeacher,
+            allTeachers = uiState.allTeachers,
+            allWeekPeriods = uiState.allSelectedWeekPeriods,
+            assignments = uiState.allAssignments
+        )
+        val q = searchQuery.trim().lowercase()
+        if (q.isEmpty()) raw
+        else raw.filter {
+            it.teacher.name.lowercase().contains(q) ||
+                it.teacher.department.lowercase().contains(q) ||
+                it.teacher.mainSubject.lowercase().contains(q)
+        }
+    }
+
+    val priorityCount = suggestions.count { it.priorityScore > 0 }
+
+    LazyColumn(
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Text(
+                text = "2. Gợi ý ${suggestions.size} giáo viên trống tiết ($priorityCount ưu tiên cùng lớp/tổ):",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        items(suggestions, key = { "swap_${it.teacher.id}" }) { item ->
+            SubstituteSuggestionCard(
+                suggestion = item,
+                targetClassShort = targetCls
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SubstituteSuggestionCard(
+    suggestion: SubstituteSuggestion,
+    targetClassShort: String
+) {
+    val isPriority = suggestion.priorityScore > 0
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (isPriority) {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            width = if (suggestion.teachesSameClass) 1.5.dp else 1.dp,
+            color = if (suggestion.teachesSameClass) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("swap_suggestion_${suggestion.teacher.id}")
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = suggestion.teacher.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = listOf(suggestion.teacher.mainSubject, suggestion.teacher.department)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" • "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = "Trống tiết",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+            }
+
+            if (isPriority) {
+                Spacer(modifier = Modifier.height(6.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (suggestion.swapSlotHint != null) {
+                        StatusTagPill(
+                            text = suggestion.swapSlotHint,
+                            bg = EmeraldLive,
+                            fg = Color.White
+                        )
+                    }
+                    if (suggestion.teachesSameClass) {
+                        StatusTagPill(
+                            text = "Cùng dạy $targetClassShort",
+                            bg = MaterialTheme.colorScheme.primary,
+                            fg = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                    if (suggestion.sameDepartment) {
+                        StatusTagPill(
+                            text = "Cùng tổ",
+                            bg = MaterialTheme.colorScheme.secondary,
+                            fg = MaterialTheme.colorScheme.onSecondary
+                        )
+                    } else if (suggestion.sameSubject) {
+                        StatusTagPill(
+                            text = "Cùng môn",
+                            bg = MaterialTheme.colorScheme.tertiary,
+                            fg = MaterialTheme.colorScheme.onTertiary
                         )
                     }
                 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -70,8 +71,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -83,7 +86,6 @@ import com.example.data.local.AppFontScale
 import com.example.data.local.AppThemeMode
 import com.example.data.local.UserPreferencesState
 import com.example.data.local.WidgetCornerStyle
-import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.domain.lunar.VnTime
 import com.example.domain.model.TimetableCalculator
@@ -118,7 +120,7 @@ fun SettingsScreen(
     onUpdatePeriodLeadMinutes: (Int) -> Unit,
     onSendTestNotification: () -> Unit,
     onToggleGpsLocation: (Boolean) -> Unit,
-    onUpdateWidgetAppearance: (Boolean, Float, WidgetTextTheme, WidgetCornerStyle, WidgetFontSize, Boolean) -> Unit,
+    onUpdateWidgetAppearance: (Boolean, Float, WidgetTextTheme, WidgetCornerStyle, Float, Boolean) -> Unit,
     onRefreshWidgetsNow: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
@@ -273,18 +275,10 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = onSyncNow,
-                            enabled = !uiState.isSyncing,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("settings_sync_now_button")
-                        ) {
+                    val effectiveFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val stackButtons = (maxWidth.value / effectiveFontScale) < 285f
+                        val syncContent: @Composable () -> Unit = {
                             if (uiState.isSyncing) {
                                 CircularProgressIndicator(
                                     color = MaterialTheme.colorScheme.onPrimary,
@@ -292,26 +286,71 @@ fun SettingsScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Đang đồng bộ...", maxLines = 1)
+                                Text("Đang đồng bộ...", textAlign = TextAlign.Center, maxLines = 2)
                             } else {
                                 Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Đồng bộ TKB", maxLines = 1)
+                                Text("Đồng bộ TKB", textAlign = TextAlign.Center, maxLines = 2)
                             }
                         }
-
-                        OutlinedButton(
-                            onClick = onLogout,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.testTag("settings_logout_button")
-                        ) {
+                        val logoutContent: @Composable () -> Unit = {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.Logout,
                                 contentDescription = "Đăng xuất",
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Đăng xuất", maxLines = 1)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Đăng xuất", textAlign = TextAlign.Center, maxLines = 2)
+                        }
+
+                        if (stackButtons) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = onSyncNow,
+                                    enabled = !uiState.isSyncing,
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("settings_sync_now_button")
+                                ) { syncContent() }
+
+                                OutlinedButton(
+                                    onClick = onLogout,
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("settings_logout_button")
+                                ) { logoutContent() }
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = onSyncNow,
+                                    enabled = !uiState.isSyncing,
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                    modifier = Modifier
+                                        .weight(1.25f)
+                                        .testTag("settings_sync_now_button")
+                                ) { syncContent() }
+
+                                OutlinedButton(
+                                    onClick = onLogout,
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("settings_logout_button")
+                                ) { logoutContent() }
+                            }
                         }
                     }
                 }
@@ -650,9 +689,13 @@ fun SettingsScreen(
             item {
                 val persistedOpacity = if (prefs.widgetTransparentMode) 0f else prefs.widgetOpacity.coerceIn(0f, 1f)
                 var liveOpacity by remember { mutableFloatStateOf(persistedOpacity) }
+                var liveFontScale by remember { mutableFloatStateOf(prefs.widgetFontScale) }
                 var previewWidgetTab by remember { mutableIntStateOf(0) } // 0 = TKB Hôm nay, 1 = Đồng hồ & TKB, 2 = Thời tiết 4 ngày
                 LaunchedEffect(prefs.widgetTransparentMode, prefs.widgetOpacity) {
                     liveOpacity = if (prefs.widgetTransparentMode) 0f else prefs.widgetOpacity.coerceIn(0f, 1f)
+                }
+                LaunchedEffect(prefs.widgetFontScale) {
+                    liveFontScale = prefs.widgetFontScale
                 }
                 val liveIsTransparent = liveOpacity <= 0.02f
 
@@ -661,10 +704,10 @@ fun SettingsScreen(
                     opacity: Float = if (transparent) 0f else liveOpacity,
                     textTheme: WidgetTextTheme = prefs.widgetTextTheme,
                     corner: WidgetCornerStyle = prefs.widgetCornerStyle,
-                    fontSize: WidgetFontSize = prefs.widgetFontSize,
+                    fontScale: Float = liveFontScale,
                     showSubject: Boolean = prefs.widgetShowSubject
                 ) {
-                    onUpdateWidgetAppearance(transparent, opacity, textTheme, corner, fontSize, showSubject)
+                    onUpdateWidgetAppearance(transparent, opacity, textTheme, corner, fontScale, showSubject)
                 }
 
                 SettingsSectionCard(
@@ -694,7 +737,7 @@ fun SettingsScreen(
                             opacity = liveOpacity,
                             textTheme = prefs.widgetTextTheme,
                             cornerStyle = prefs.widgetCornerStyle,
-                            fontSize = prefs.widgetFontSize,
+                            fontScale = liveFontScale,
                             showSubject = prefs.widgetShowSubject,
                             isSundayPreview = uiState.isSundayPreview
                         )
@@ -708,7 +751,7 @@ fun SettingsScreen(
                             opacity = liveOpacity,
                             textTheme = prefs.widgetTextTheme,
                             cornerStyle = prefs.widgetCornerStyle,
-                            fontSize = prefs.widgetFontSize,
+                            fontScale = liveFontScale,
                             showSubject = prefs.widgetShowSubject
                         )
                         else -> LiveWeatherTimetablePreviewCard(
@@ -720,7 +763,7 @@ fun SettingsScreen(
                             opacity = liveOpacity,
                             textTheme = prefs.widgetTextTheme,
                             cornerStyle = prefs.widgetCornerStyle,
-                            fontSize = prefs.widgetFontSize,
+                            fontScale = liveFontScale,
                             showSubject = prefs.widgetShowSubject
                         )
                     }
@@ -824,19 +867,90 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Text(
-                        text = "Cỡ chữ trên Widget",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    val fontPct = (liveFontScale * 100).roundToInt()
+                    val fontDesc = when {
+                        liveFontScale < 0.93f -> "Nhỏ"
+                        liveFontScale <= 1.07f -> "Vừa"
+                        liveFontScale <= 1.24f -> "Lớn"
+                        else -> "Rất lớn"
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Cỡ chữ trên Widget",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "$fontPct% ($fontDesc)",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (fontPct != 100) {
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .clickable {
+                                            liveFontScale = UserPreferencesState.DEFAULT_WIDGET_FONT_SCALE
+                                            saveWidgetConfig(fontScale = UserPreferencesState.DEFAULT_WIDGET_FONT_SCALE)
+                                        }
+                                        .testTag("widget_font_reset_button")
+                                ) {
+                                    Text(
+                                        text = "Mặc định",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-                    SegmentedOptionBar(
-                        options = WidgetFontSize.entries.map {
-                            SegmentOption(it, it.label, "widget_font_${it.key}")
+                    Slider(
+                        value = liveFontScale,
+                        onValueChange = { newScale ->
+                            liveFontScale = ((newScale * 20f).roundToInt() / 20f).coerceIn(
+                                UserPreferencesState.MIN_WIDGET_FONT_SCALE,
+                                UserPreferencesState.MAX_WIDGET_FONT_SCALE
+                            )
                         },
-                        selected = prefs.widgetFontSize,
-                        onSelect = { saveWidgetConfig(fontSize = it) }
+                        onValueChangeFinished = {
+                            saveWidgetConfig(fontScale = liveFontScale)
+                        },
+                        valueRange = UserPreferencesState.MIN_WIDGET_FONT_SCALE..UserPreferencesState.MAX_WIDGET_FONT_SCALE,
+                        steps = 13,
+                        modifier = Modifier.testTag("widget_font_slider")
                     )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Nhỏ (80%)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Vừa (100%)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Rất lớn (150%)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 

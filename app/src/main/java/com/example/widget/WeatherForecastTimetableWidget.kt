@@ -172,7 +172,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                     text = headerDateText,
                     style = TextStyle(
                         color = ColorProvider(palette.primaryText),
-                        fontSize = 12.sp,
+                        fontSize = data.sp(12f),
                         fontWeight = FontWeight.Bold
                     ),
                     maxLines = 1,
@@ -220,7 +220,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                             text = data.weather?.let { "${it.currentTemp}°C" } ?: "--°C",
                             style = TextStyle(
                                 color = ColorProvider(palette.primaryText),
-                                fontSize = if (isCompactHeight) 20.sp else 24.sp,
+                                fontSize = data.sp(if (isCompactHeight) 20f else 24f),
                                 fontWeight = FontWeight.Bold
                             ),
                             maxLines = 1
@@ -229,7 +229,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                             text = data.weatherDesc,
                             style = TextStyle(
                                 color = ColorProvider(palette.secondaryText),
-                                fontSize = 11.sp
+                                fontSize = data.sp(11f)
                             ),
                             maxLines = 1
                         )
@@ -244,7 +244,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                             text = highLow,
                             style = TextStyle(
                                 color = ColorProvider(palette.primaryText),
-                                fontSize = 12.sp,
+                                fontSize = data.sp(12f),
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.End
                             ),
@@ -265,7 +265,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                                 text = rainHum,
                                 style = TextStyle(
                                     color = ColorProvider(palette.secondaryText),
-                                    fontSize = 10.sp
+                                    fontSize = data.sp(10f)
                                 ),
                                 maxLines = 1
                             )
@@ -285,7 +285,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                                     text = data.weather?.let { "Gió ${it.windSpeedKmh} km/h" } ?: "Gió -- km/h",
                                     style = TextStyle(
                                         color = ColorProvider(palette.secondaryText),
-                                        fontSize = 10.sp
+                                        fontSize = data.sp(10f)
                                     ),
                                     maxLines = 1
                                 )
@@ -316,6 +316,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                     }
                     ForecastDayTile(
                         index = idx,
+                        data = data,
                         forecast = forecast,
                         palette = palette,
                         modifier = GlanceModifier.defaultWeight()
@@ -351,7 +352,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                     text = leftTitle,
                     style = TextStyle(
                         color = ColorProvider(palette.accentOrange),
-                        fontSize = 11.sp,
+                        fontSize = data.sp(11f),
                         fontWeight = FontWeight.Bold
                     ),
                     maxLines = 1,
@@ -365,7 +366,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                         text = liveBadge.first,
                         style = TextStyle(
                             color = ColorProvider(liveBadge.second),
-                            fontSize = (10f + data.fontDeltaSp * 0.4f).coerceAtLeast(9f).sp,
+                            fontSize = data.sp(10f),
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.End
                         ),
@@ -382,7 +383,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                         text = "Chạm để đăng nhập xem thời khóa biểu giáo viên",
                         style = TextStyle(
                             color = ColorProvider(palette.secondaryText),
-                            fontSize = 11.sp
+                            fontSize = data.sp(11f)
                         ),
                         maxLines = 2
                     )
@@ -397,7 +398,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                         },
                         style = TextStyle(
                             color = ColorProvider(palette.secondaryText),
-                            fontSize = 11.sp
+                            fontSize = data.sp(11f)
                         ),
                         maxLines = 1
                     )
@@ -456,7 +457,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                             text = "+${allPeriods.size - maxItems} tiết nữa...",
                             style = TextStyle(
                                 color = ColorProvider(palette.secondaryText),
-                                fontSize = 10.sp
+                                fontSize = data.sp(10f)
                             ),
                             maxLines = 1
                         )
@@ -470,6 +471,7 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
 @Composable
 private fun ForecastDayTile(
     index: Int,
+    data: WidgetRenderData,
     forecast: DailyForecast,
     palette: WidgetPalette,
     modifier: GlanceModifier = GlanceModifier
@@ -493,7 +495,7 @@ private fun ForecastDayTile(
             text = if (index == 0) "H.NAY" else forecast.date.forecastShortLabel,
             style = TextStyle(
                 color = ColorProvider(palette.secondaryText),
-                fontSize = 10.sp,
+                fontSize = data.sp(10f),
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             ),
@@ -510,7 +512,7 @@ private fun ForecastDayTile(
             text = "${forecast.precipitationProbability}%",
             style = TextStyle(
                 color = ColorProvider(palette.rainBlue),
-                fontSize = 10.sp,
+                fontSize = data.sp(10f),
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center
             ),
@@ -520,7 +522,7 @@ private fun ForecastDayTile(
             text = "${forecast.tempMin}°/${forecast.tempMax}°",
             style = TextStyle(
                 color = ColorProvider(palette.primaryText),
-                fontSize = 10.sp,
+                fontSize = data.sp(10f),
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             ),
@@ -536,7 +538,6 @@ private fun TimetableGridTile(
     palette: WidgetPalette,
     modifier: GlanceModifier = GlanceModifier
 ) {
-    val delta = data.fontDeltaSp
     val isNow = period.liveStatus == PeriodLiveStatus.TEACHING_NOW
     val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
     val isPast = period.liveStatus == PeriodLiveStatus.PAST
@@ -582,7 +583,7 @@ private fun TimetableGridTile(
             text = periodLabel,
             style = TextStyle(
                 color = ColorProvider(tagColor),
-                fontSize = (10f + delta * 0.7f).coerceAtLeast(9f).sp,
+                fontSize = data.sp(10f, minSp = 8.5f),
                 fontWeight = FontWeight.Bold
             ),
             maxLines = 1
@@ -592,7 +593,7 @@ private fun TimetableGridTile(
             text = data.formatPeriodTitle(period),
             style = TextStyle(
                 color = ColorProvider(textColor),
-                fontSize = (11f + delta * 0.8f).coerceAtLeast(9.5f).sp,
+                fontSize = data.sp(11f, minSp = 9.5f),
                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium
             ),
             maxLines = 1,

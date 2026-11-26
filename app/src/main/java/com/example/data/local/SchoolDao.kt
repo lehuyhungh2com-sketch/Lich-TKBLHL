@@ -98,7 +98,10 @@ interface SchoolDao {
         insertAssignments(assignments)
     }
 
-    // Timetable Slots (per week)
+    // Timetable Slots (per week & cached cumulative)
+    @Query("SELECT * FROM timetable_slots")
+    fun observeAllSlots(): Flow<List<TimetableSlotEntity>>
+
     @Query("SELECT * FROM timetable_slots WHERE week = :week")
     fun observeSlotsForWeek(week: Int): Flow<List<TimetableSlotEntity>>
 
@@ -187,4 +190,21 @@ interface SchoolDao {
 
     @Query("DELETE FROM lesson_notes WHERE noteKey = :noteKey")
     suspend fun deleteLessonNote(noteKey: String)
+
+    // Previous Sync Slot Snapshots (100% local comparison baseline)
+    @Query("SELECT * FROM timetable_slot_snapshots WHERE week = :week LIMIT 1")
+    fun observeSlotSnapshotForWeek(week: Int): Flow<TimetableSlotSnapshotEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSlotSnapshot(snapshot: TimetableSlotSnapshotEntity)
+
+    // Personal Calendar Events (100% local to device)
+    @Query("SELECT * FROM calendar_events ORDER BY month ASC, day ASC, createdAtMillis DESC")
+    fun observeCalendarEvents(): Flow<List<CalendarEventEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCalendarEvent(event: CalendarEventEntity): Long
+
+    @Query("DELETE FROM calendar_events WHERE id = :id")
+    suspend fun deleteCalendarEvent(id: Long)
 }

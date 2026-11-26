@@ -116,15 +116,20 @@ data class UserPreferencesState(
     val widgetTextTheme: WidgetTextTheme = WidgetTextTheme.AUTO,
     val widgetCornerStyle: WidgetCornerStyle = WidgetCornerStyle.ROUNDED,
     val widgetFontSize: WidgetFontSize = WidgetFontSize.MEDIUM,
+    val widgetFontScale: Float = DEFAULT_WIDGET_FONT_SCALE,
     val widgetShowSubject: Boolean = true
 ) {
     val isLoggedIn: Boolean get() = !loggedInTeacherId.isNullOrBlank()
     val isCompactDensity: Boolean get() = appDensityMode == AppDensityMode.COMPACT
+    val widgetFontDeltaSp: Float get() = (widgetFontScale - 1.0f) * 14f
 
     companion object {
         const val DEFAULT_LAT = 19.9333
         const val DEFAULT_LON = 105.9000
         const val DEFAULT_LOCATION_NAME = "Hậu Lộc"
+        const val MIN_WIDGET_FONT_SCALE = 0.80f
+        const val MAX_WIDGET_FONT_SCALE = 1.50f
+        const val DEFAULT_WIDGET_FONT_SCALE = 1.0f
         val LEAD_MINUTE_OPTIONS = listOf(5, 10, 15)
     }
 }
@@ -153,10 +158,18 @@ class AppPreferences(private val context: Context) {
         val WIDGET_TEXT_THEME = stringPreferencesKey("widget_text_theme")
         val WIDGET_CORNER_STYLE = stringPreferencesKey("widget_corner_style")
         val WIDGET_FONT_SIZE = stringPreferencesKey("widget_font_size")
+        val WIDGET_FONT_SCALE = floatPreferencesKey("widget_font_scale")
         val WIDGET_SHOW_SUBJECT = booleanPreferencesKey("widget_show_subject")
     }
 
     val preferencesFlow: Flow<UserPreferencesState> = context.dataStore.data.map { prefs ->
+        val legacyFontSize = WidgetFontSize.fromKey(prefs[Keys.WIDGET_FONT_SIZE])
+        val resolvedFontScale = (prefs[Keys.WIDGET_FONT_SCALE] ?: when (legacyFontSize) {
+            WidgetFontSize.SMALL -> 0.88f
+            WidgetFontSize.MEDIUM -> 1.0f
+            WidgetFontSize.LARGE -> 1.18f
+        }).coerceIn(UserPreferencesState.MIN_WIDGET_FONT_SCALE, UserPreferencesState.MAX_WIDGET_FONT_SCALE)
+
         UserPreferencesState(
             loggedInTeacherId = prefs[Keys.TEACHER_ID],
             loggedInEmail = prefs[Keys.TEACHER_EMAIL],
@@ -178,7 +191,8 @@ class AppPreferences(private val context: Context) {
             widgetOpacity = prefs[Keys.WIDGET_OPACITY] ?: 0.0f,
             widgetTextTheme = WidgetTextTheme.fromKey(prefs[Keys.WIDGET_TEXT_THEME] ?: WidgetTextTheme.AUTO.key),
             widgetCornerStyle = WidgetCornerStyle.fromKey(prefs[Keys.WIDGET_CORNER_STYLE]),
-            widgetFontSize = WidgetFontSize.fromKey(prefs[Keys.WIDGET_FONT_SIZE]),
+            widgetFontSize = legacyFontSize,
+            widgetFontScale = resolvedFontScale,
             widgetShowSubject = prefs[Keys.WIDGET_SHOW_SUBJECT] ?: true
         )
     }
@@ -275,15 +289,25 @@ class AppPreferences(private val context: Context) {
         opacity: Float,
         textTheme: WidgetTextTheme,
         cornerStyle: WidgetCornerStyle,
-        fontSize: WidgetFontSize,
+        fontScale: Float,
         showSubject: Boolean
     ) {
+        val clampedScale = fontScale.coerceIn(
+            UserPreferencesState.MIN_WIDGET_FONT_SCALE,
+            UserPreferencesState.MAX_WIDGET_FONT_SCALE
+        )
+        val bucket = when {
+            clampedScale < 0.93f -> WidgetFontSize.SMALL
+            clampedScale > 1.07f -> WidgetFontSize.LARGE
+            else -> WidgetFontSize.MEDIUM
+        }
         context.dataStore.edit { prefs ->
             prefs[Keys.WIDGET_TRANSPARENT_MODE] = transparentMode
             prefs[Keys.WIDGET_OPACITY] = opacity.coerceIn(0f, 1f)
             prefs[Keys.WIDGET_TEXT_THEME] = textTheme.key
             prefs[Keys.WIDGET_CORNER_STYLE] = cornerStyle.key
-            prefs[Keys.WIDGET_FONT_SIZE] = fontSize.key
+            prefs[Keys.WIDGET_FONT_SIZE] = bucket.key
+            prefs[Keys.WIDGET_FONT_SCALE] = clampedScale
             prefs[Keys.WIDGET_SHOW_SUBJECT] = showSubject
         }
     }

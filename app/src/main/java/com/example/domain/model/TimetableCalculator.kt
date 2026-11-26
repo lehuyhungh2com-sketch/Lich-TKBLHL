@@ -1,5 +1,6 @@
 package com.example.domain.model
 
+import com.example.domain.lunar.LunarDate
 import com.example.domain.lunar.VnDate
 import com.example.domain.lunar.VnTime
 
@@ -378,5 +379,256 @@ object TimetableCalculator {
     fun resolveHomeroomClassId(teacher: Teacher, classes: List<SchoolClass>): String? {
         if (!teacher.homeroomClass.isNullOrBlank()) return teacher.homeroomClass
         return classes.firstOrNull { it.homeroomTeacherId == teacher.id }?.id
+    }
+
+    /**
+     * Compares current resolved periods against a baseline (either a previous sync snapshot
+     * of the same week or the previous week's cached periods) and returns slotIds that are new or modified.
+     */
+    fun detectChangedSlotIds(
+        currentPeriods: List<ResolvedPeriod>,
+        baselinePeriods: List<ResolvedPeriod>
+    ): Set<String> {
+        if (currentPeriods.isEmpty() || baselinePeriods.isEmpty()) return emptySet()
+
+        val baselineByPos = baselinePeriods.groupBy { "${it.day}_${it.session}_${it.period}" }
+        val changed = mutableSetOf<String>()
+
+        for (period in currentPeriods) {
+            val posKey = "${period.day}_${period.session}_${period.period}"
+            val baselineAtPos = baselineByPos[posKey].orEmpty()
+            val matchesBaseline = baselineAtPos.any { base ->
+                base.classId.equals(period.classId, ignoreCase = true) &&
+                    base.subjectId.equals(period.subjectId, ignoreCase = true) &&
+                    base.teacherId.equals(period.teacherId, ignoreCase = true) &&
+                    base.room.equals(period.room, ignoreCase = true)
+            }
+            if (!matchesBaseline) {
+                changed.add(period.slotId)
+            }
+        }
+        return changed
+    }
+
+    /**
+     * Offline workload & quota ("Định mức") calculator for the selected week and cumulative
+     * from Week 1 up to selectedWeek using already-cached Room slots (0 Firestore reads).
+     */
+    fun calculateWorkloadStats(
+        selectedWeek: Int,
+        selectedWeekPeriods: List<ResolvedPeriod>,
+        allCachedSlots: List<TimetableSlot>,
+        schoolConfig: SchoolConfig,
+        weeks: List<WeekInfo>,
+        deletedSlotKeys: Set<String>,
+        teachers: List<Teacher>,
+        classes: List<SchoolClass>,
+        subjects: List<Subject>,
+        assignments: List<Assignment>,
+        filterTeacherId: String?,
+        filterClassId: String?
+    ): WorkloadStatsSummary {
+        val selectedWeekInfo = weeks.firstOrNull { it.weekNumber == selectedWeek }
+        val effectiveAssignments = if (selectedWeekInfo?.isLocked == true && !selectedWeekInfo.lockedAssignments.isNullOrEmpty()) {
+            selectedWeekInfo.lockedAssignments
+        } else {
+            assignments
+        }.filter { a ->
+            when {
+                filterClassId != null -> a.classId.equals(filterClassId, ignoreCase = true)
+                filterTeacherId != null -> a.teacherId == filterTeacherId
+                else -> false
+            }
+        }
+
+        val weekMorning = selectedWeekPeriods.count { !it.isAfternoon }
+        val weekAfternoon = selectedWeekPeriods.count { it.isAfternoon }
+        val weekQuota = effectiveAssignments.sumOf { it.periodsPerWeek.coerceAtLeast(0) }
+
+        val slotsUpToSelectedByWeek = allCachedSlots
+            .filter { it.week in MIN_WEEK..selectedWeek }
+            .groupBy { it.week }
+
+        val cachedWeekNumbers = slotsUpToSelectedByWeek.keys.sorted()
+        val yearResolved = mutableListOf<ResolvedPeriod>()
+        for (wk in cachedWeekNumbers) {
+            val wkInfo = weeks.firstOrNull { it.weekNumber == wk }
+            val wkRaw = slotsUpToSelectedByWeek[wk].orEmpty()
+            yearResolved += resolveWeekPeriods(
+                weekNumber = wk,
+                rawSlots = wkRaw,
+                schoolConfig = schoolConfig,
+                weekInfo = wkInfo,
+                deletedSlotKeys = deletedSlotKeys,
+                teachers = teachers,
+                classes = classes,
+                subjects = subjects,
+                assignments = assignments,
+                filterTeacherId = filterTeacherId,
+                filterClassId = filterClassId
+            )
+        }
+
+        val yearMorning = yearResolved.count { !it.isAfternoon }
+        val yearAfternoon = yearResolved.count { it.isAfternoon }
+
+        // Breakdown by Class
+        val classKeys = buildSet {
+            selectedWeekPeriods.forEach { add(it.classId) }
+            yearResolved.forEach { add(it.classId) }
+            effectiveAssignments.forEach { add(it.classId) }
+        }
+        val classesById = classes.associateBy { it.id }
+        val byClass = classKeys.map { clsId ->
+            val wkList = selectedWeekPeriods.filter { it.classId.equals(clsId, ignoreCase = true) }
+            val yrList = yearResolved.filter { it.classId.equals(clsId, ignoreCase = true) }
+            val assigned = effectiveAssignments
+                .filter { it.classId.equals(clsId, ignoreCase = true) }
+                .sumOf { it.periodsPerWeek.coerceAtLeast(0) }
+            val label = classesById[clsId]?.name?.let { compactClassName(it) }
+                ?: wkList.firstOrNull()?.className?.let { compactClassName(it) }
+                ?: clsId
+            WorkloadBreakdownRow(
+                key = clsId,
+                label = "Lớp $label",
+                weekMorning = wkList.count { !it.isAfternoon },
+                weekAfternoon = wkList.count { it.isAfternoon },
+                assignedPerWeek = assigned,
+                yearMorning = yrList.count { !it.isAfternoon },
+                yearAfternoon = yrList.count { it.isAfternoon }
+            )
+        }.sortedWith(compareByDescending<WorkloadBreakdownRow> { it.weekTotal }.thenBy { it.label })
+
+        // Breakdown by Subject
+        val subjectsById = subjects.associateBy { it.id }
+        val weekBySubject = selectedWeekPeriods.groupBy { it.subjectName }
+        val yearBySubject = yearResolved.groupBy { it.subjectName }
+        val assignedBySubjectLabel = mutableMapOf<String, Int>()
+        for (a in effectiveAssignments) {
+            val sub = subjectsById[a.subjectId]
+            val label = readableSubjectName(a.subjectId, sub?.name, sub?.code, null)
+            assignedBySubjectLabel[label] = (assignedBySubjectLabel[label] ?: 0) + a.periodsPerWeek.coerceAtLeast(0)
+        }
+        val subjectLabels = (weekBySubject.keys + yearBySubject.keys + assignedBySubjectLabel.keys).toSet()
+        val bySubject = subjectLabels.map { label ->
+            val wkList = weekBySubject[label].orEmpty()
+            val yrList = yearBySubject[label].orEmpty()
+            WorkloadBreakdownRow(
+                key = label,
+                label = label,
+                weekMorning = wkList.count { !it.isAfternoon },
+                weekAfternoon = wkList.count { it.isAfternoon },
+                assignedPerWeek = assignedBySubjectLabel[label] ?: 0,
+                yearMorning = yrList.count { !it.isAfternoon },
+                yearAfternoon = yrList.count { it.isAfternoon }
+            )
+        }.sortedWith(compareByDescending<WorkloadBreakdownRow> { it.weekTotal }.thenBy { it.label })
+
+        return WorkloadStatsSummary(
+            selectedWeek = selectedWeek,
+            weekMorningCount = weekMorning,
+            weekAfternoonCount = weekAfternoon,
+            weekAssignedQuota = weekQuota,
+            yearCachedWeeksCount = cachedWeekNumbers.size,
+            yearCachedWeeksList = cachedWeekNumbers,
+            yearMorningCount = yearMorning,
+            yearAfternoonCount = yearAfternoon,
+            byClass = byClass,
+            bySubject = bySubject
+        )
+    }
+
+    /**
+     * Suggests free teachers who can cover or swap a selected period, prioritizing:
+     * 1) Teachers who also teach the same class (and can swap directly when the requester is free)
+     * 2) Teachers in the same department or main subject
+     * 3) Other free teachers at that exact slot
+     */
+    fun suggestSubstituteTeachers(
+        targetPeriod: ResolvedPeriod,
+        requesterTeacher: Teacher?,
+        allTeachers: List<Teacher>,
+        allWeekPeriods: List<ResolvedPeriod>,
+        assignments: List<Assignment>
+    ): List<SubstituteSuggestion> {
+        val targetPos = "${targetPeriod.day}_${targetPeriod.session}_${targetPeriod.period}"
+        val busyAtTarget = allWeekPeriods
+            .filter { "${it.day}_${it.session}_${it.period}" == targetPos }
+            .map { it.teacherId }
+            .toSet()
+
+        val requesterId = requesterTeacher?.id ?: targetPeriod.teacherId
+        val requesterBusyPositions = allWeekPeriods
+            .filter { it.teacherId == requesterId }
+            .map { "${it.day}_${it.session}_${it.period}" }
+            .toSet()
+
+        val classTeacherIdsFromAssignments = assignments
+            .filter { it.classId.equals(targetPeriod.classId, ignoreCase = true) }
+            .map { it.teacherId }
+            .toSet()
+
+        return allTeachers
+            .filter { teacher ->
+                teacher.id != requesterId &&
+                    teacher.id != targetPeriod.teacherId &&
+                    teacher.id !in busyAtTarget
+            }
+            .map { candidate ->
+                val candidateSlotsInTargetClass = allWeekPeriods.filter {
+                    it.teacherId == candidate.id &&
+                        it.classId.equals(targetPeriod.classId, ignoreCase = true)
+                }
+                val teachesSameClass = candidateSlotsInTargetClass.isNotEmpty() ||
+                    candidate.id in classTeacherIdsFromAssignments
+
+                val sameDepartment = requesterTeacher != null &&
+                    requesterTeacher.department.isNotBlank() &&
+                    candidate.department.equals(requesterTeacher.department, ignoreCase = true)
+
+                val sameSubject = candidate.mainSubject.isNotBlank() && (
+                    (requesterTeacher?.mainSubject?.isNotBlank() == true &&
+                        candidate.mainSubject.equals(requesterTeacher.mainSubject, ignoreCase = true)) ||
+                        targetPeriod.subjectName.contains(candidate.mainSubject, ignoreCase = true) ||
+                        candidate.mainSubject.contains(targetPeriod.subjectName, ignoreCase = true)
+                    )
+
+                val directSwapSlot = candidateSlotsInTargetClass.firstOrNull { slot ->
+                    val pos = "${slot.day}_${slot.session}_${slot.period}"
+                    pos != targetPos && pos !in requesterBusyPositions
+                }
+                val swapHint = directSwapSlot?.let { slot ->
+                    val ses = if (slot.isAfternoon) "Chiều" else "Sáng"
+                    "Đổi chéo: ${slot.day} $ses T${slot.period} (${slot.subjectShort})"
+                }
+
+                SubstituteSuggestion(
+                    teacher = candidate,
+                    teachesSameClass = teachesSameClass,
+                    sameDepartment = sameDepartment,
+                    sameSubject = sameSubject,
+                    swapSlotHint = swapHint
+                )
+            }
+            .sortedWith(
+                compareByDescending<SubstituteSuggestion> { it.priorityScore }
+                    .thenBy { it.teacher.name }
+            )
+    }
+
+    fun eventMatchesDate(
+        event: CalendarEvent,
+        solarDate: VnDate,
+        lunarDate: LunarDate
+    ): Boolean {
+        return if (event.isLunar) {
+            event.month == lunarDate.month &&
+                event.day == lunarDate.day &&
+                (event.isRecurringYearly || event.year == lunarDate.year)
+        } else {
+            event.month == solarDate.month &&
+                event.day == solarDate.day &&
+                (event.isRecurringYearly || event.year == solarDate.year)
+        }
     }
 }

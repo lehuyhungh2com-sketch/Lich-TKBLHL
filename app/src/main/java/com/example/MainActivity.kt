@@ -295,7 +295,7 @@ private fun LhlTimetableRoot(
                             uiState = uiState,
                             onSelectWeek = viewModel::selectWeek,
                             onToggleHomeroom = viewModel::toggleHomeroomMode,
-                            onSyncNow = { viewModel.syncNow(force = true) },
+                            onSyncNow = { viewModel.syncNow(force = false) },
                             onSaveLessonNote = viewModel::saveLessonNote,
                             onDeleteLessonNote = viewModel::deleteLessonNote,
                             onNotify = viewModel::showBannerMessage
@@ -308,14 +308,16 @@ private fun LhlTimetableRoot(
                             onJumpToWeek = { week ->
                                 viewModel.selectWeek(week)
                                 navigateToTab(MainActivity.TAB_TIMETABLE)
-                            }
+                            },
+                            onSaveEvent = viewModel::saveCalendarEvent,
+                            onDeleteEvent = viewModel::deleteCalendarEvent
                         )
                     }
 
                     composable(MainActivity.TAB_SETTINGS) {
                         SettingsScreen(
                             uiState = uiState,
-                            onSyncNow = { viewModel.syncNow(force = true) },
+                            onSyncNow = { viewModel.syncNow(force = false) },
                             onUpdateAppTheme = viewModel::updateAppThemeMode,
                             onUpdateAccentPalette = viewModel::updateAppAccentPalette,
                             onUpdateFontScale = viewModel::updateAppFontScale,

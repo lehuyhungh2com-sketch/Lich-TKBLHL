@@ -3,10 +3,10 @@ package com.example.widget
 import android.content.Context
 import android.content.res.Configuration
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import com.example.LhlTimetableApp
 import com.example.data.local.LessonNoteEntity
 import com.example.data.local.WidgetCornerStyle
-import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.data.remote.WeatherCodeMapper
 import com.example.domain.lunar.LunarCalendar
@@ -70,10 +70,14 @@ data class WidgetRenderData(
     val afternoonCompactLine: String,
     val lessonNotes: Map<String, String>,
     val cornerRadiusDp: Int,
+    val fontScale: Float,
     val fontDeltaSp: Float,
     val showSubjectOnWidget: Boolean,
     val palette: WidgetPalette
 ) {
+    fun sp(baseSp: Float, minSp: Float = 8.5f, maxSp: Float = 38f) =
+        (baseSp * fontScale).coerceIn(minSp, maxSp).sp
+
     fun noteFor(period: ResolvedPeriod): String? {
         val key = LessonNoteEntity.buildKey(
             week = period.week,
@@ -205,7 +209,8 @@ object WidgetDataBuilder {
             afternoonCompactLine = TimetableCalculator.formatCompactSessionLine("Chiều", afternoon),
             lessonNotes = snapshot.lessonNotes,
             cornerRadiusDp = prefs.widgetCornerStyle.radiusDp,
-            fontDeltaSp = prefs.widgetFontSize.deltaSp,
+            fontScale = prefs.widgetFontScale,
+            fontDeltaSp = prefs.widgetFontDeltaSp,
             showSubjectOnWidget = prefs.widgetShowSubject,
             palette = palette
         )

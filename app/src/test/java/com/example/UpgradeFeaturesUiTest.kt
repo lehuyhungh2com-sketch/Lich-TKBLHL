@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -105,17 +106,72 @@ class UpgradeFeaturesUiTest {
         composeRule.onNodeWithTag("period_lead_15").assertIsDisplayed().performClick()
         assertEquals(15, selectedLeadMinutes)
 
-        // Scroll to Widget Corner / Font / Show Subject / Refresh controls
+        // Scroll to Widget Font Slider & Refresh controls
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("widget_font_slider"))
+        composeRule.onNodeWithTag("widget_font_slider").assertIsDisplayed()
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("settings_refresh_widgets_button"))
         composeRule.onNodeWithTag("settings_refresh_widgets_button").assertIsDisplayed()
     }
 
     @Test
-    fun timetableScreen_rendersLookupAndShareButtons() {
+    fun settingsScreen_syncAndLogoutButtonsShowFullTextEvenAtXLargeFontScale() {
+        val xlargeState = sampleUiState().copy(
+            preferences = sampleUiState().preferences.copy(appFontScale = AppFontScale.XLARGE)
+        )
+        composeRule.setContent {
+            LhlTimetableTheme(fontScale = AppFontScale.XLARGE) {
+                SettingsScreen(
+                    uiState = xlargeState,
+                    onSyncNow = {},
+                    onUpdateAppTheme = {},
+                    onUpdateAccentPalette = {},
+                    onUpdateFontScale = {},
+                    onUpdateDensityMode = {},
+                    onUpdateDailyReminder = { _, _, _ -> },
+                    onTogglePeriodReminder = {},
+                    onUpdatePeriodLeadMinutes = {},
+                    onSendTestNotification = {},
+                    onToggleGpsLocation = {},
+                    onUpdateWidgetAppearance = { _, _, _, _, _, _ -> },
+                    onRefreshWidgetsNow = {},
+                    onLogout = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("settings_sync_now_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_logout_button").assertIsDisplayed()
+        composeRule.onNodeWithText("Đồng bộ TKB").assertIsDisplayed()
+        composeRule.onNodeWithText("Đăng xuất").assertIsDisplayed()
+    }
+
+    @Test
+    fun timetableScreen_rendersLookupAndShareButtonsAndOption2Modes() {
+        val samplePeriod = com.example.domain.model.ResolvedPeriod(
+            slotId = "t2-p1",
+            week = 12,
+            day = "T2",
+            period = 1,
+            session = "morning",
+            classId = "8A1",
+            className = "8A1",
+            subjectId = "sub-tin",
+            subjectName = "Tin học",
+            subjectShort = "Tin",
+            teacherId = "t1",
+            teacherShortName = "Hoa",
+            room = "Phòng Tin học",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(7, 15),
+            endTime = com.example.domain.lunar.VnTime(8, 0)
+        )
+        val state = sampleUiState().copy(selectedWeekPeriods = listOf(samplePeriod))
+
         composeRule.setContent {
             LhlTimetableTheme {
                 TimetableScreen(
-                    uiState = sampleUiState(),
+                    uiState = state,
                     onSelectWeek = {},
                     onToggleHomeroom = {},
                     onSyncNow = {},
@@ -130,6 +186,24 @@ class UpgradeFeaturesUiTest {
         composeRule.onNodeWithTag("timetable_share_button").assertIsDisplayed()
         composeRule.onNodeWithText("Tra cứu Lớp / GV").assertIsDisplayed()
         composeRule.onNodeWithText("Chia sẻ ảnh TKB").assertIsDisplayed()
+
+        // Option 2 mode selector & quick day strip
+        composeRule.onNodeWithTag("timetable_mode_day").assertIsDisplayed()
+        composeRule.onNodeWithTag("timetable_mode_cards").assertIsDisplayed()
+        composeRule.onNodeWithTag("timetable_mode_matrix").assertIsDisplayed()
+        composeRule.onNodeWithTag("quick_day_T2").assertIsDisplayed()
+        composeRule.onNodeWithTag("quick_day_T7").assertIsDisplayed()
+
+        // Switch to Single Day mode and select T2
+        composeRule.onNodeWithTag("timetable_mode_day").performClick()
+        composeRule.onNodeWithTag("quick_day_T2").performClick()
+        composeRule.onNodeWithTag("single_day_card_T2").assertIsDisplayed()
+        composeRule.onNodeWithText("8A1 • Tin học").assertIsDisplayed()
+        composeRule.onNodeWithText("Phòng Tin học").assertIsDisplayed()
+
+        // Switch to Matrix mode
+        composeRule.onNodeWithTag("timetable_mode_matrix").performClick()
+        composeRule.onNodeWithText("Bảng TKB Buổi Sáng").assertIsDisplayed()
     }
 
     @Test
@@ -338,5 +412,128 @@ class UpgradeFeaturesUiTest {
         fullBmp.recycle()
         morningBmp.recycle()
         afternoonBmp.recycle()
+    }
+
+    @Test
+    fun timetableScreen_showsChangedBadge_opensWorkloadSheet_andOpensSwapTab() {
+        val changedPeriod = com.example.domain.model.ResolvedPeriod(
+            slotId = "chg1",
+            week = 12,
+            day = "T2",
+            period = 1,
+            session = "morning",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-tin",
+            subjectName = "Tin học",
+            subjectShort = "Tin",
+            teacherId = "t1",
+            teacherShortName = "Hoa",
+            room = "P.Tin",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(7, 15),
+            endTime = com.example.domain.lunar.VnTime(8, 0),
+            isChanged = true
+        )
+        val colleague = Teacher(
+            id = "t2",
+            name = "Trần Văn Minh",
+            shortName = "Minh",
+            email = "minh@lhl.vn",
+            department = "Tổ KHXH",
+            mainSubject = "Ngữ văn"
+        )
+        val state = sampleUiState().copy(
+            allTeachers = listOf(sampleUiState().currentTeacher!!, colleague),
+            selectedWeekPeriods = listOf(changedPeriod),
+            allSelectedWeekPeriods = listOf(changedPeriod),
+            changedPeriodCount = 1,
+            changeComparisonLabel = "so với Tuần 11",
+            workloadStats = com.example.domain.model.WorkloadStatsSummary(
+                selectedWeek = 12,
+                weekMorningCount = 1,
+                weekAfternoonCount = 0,
+                weekAssignedQuota = 2,
+                yearCachedWeeksCount = 2,
+                yearCachedWeeksList = listOf(11, 12),
+                yearMorningCount = 3,
+                yearAfternoonCount = 1
+            )
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                TimetableScreen(
+                    uiState = state,
+                    onSelectWeek = {},
+                    onToggleHomeroom = {},
+                    onSyncNow = {},
+                    onSaveLessonNote = { _, _ -> },
+                    onDeleteLessonNote = {},
+                    onNotify = {}
+                )
+            }
+        }
+
+        // Changed alert banner and MỚI ĐỔI badge are visible
+        composeRule.onNodeWithTag("changed_periods_alert_banner").assertIsDisplayed()
+        composeRule.onNodeWithText("MỚI ĐỔI").assertIsDisplayed()
+
+        // Open Định mức sheet
+        composeRule.onNodeWithTag("timetable_workload_button").performClick()
+        composeRule.onNodeWithTag("workload_stats_sheet").assertIsDisplayed()
+        composeRule.onNodeWithText("Định mức & Thống kê số tiết").assertIsDisplayed()
+
+        // Dismiss sheet by pressing back or closing
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Đóng thống kê")).performClick()
+
+        // Open Tìm người đổi tiết directly on swap tab
+        composeRule.onNodeWithTag("timetable_swap_button").performClick()
+        composeRule.onNodeWithTag("swap_suggestion_t2").assertIsDisplayed()
+        composeRule.onNodeWithText("Cùng tổ").assertIsDisplayed()
+    }
+
+    @Test
+    fun calendarScreen_displaysEventDotsAndOpensAddEventSheet() {
+        val today = com.example.domain.lunar.VnDate(2026, 11, 26)
+        val sampleEvent = com.example.domain.model.CalendarEvent(
+            id = 10L,
+            title = "Họp tổ chuyên môn",
+            note = "Phòng hội đồng",
+            category = com.example.domain.model.CalendarEventCategory.MEETING,
+            isLunar = false,
+            year = 2026,
+            month = 11,
+            day = 26,
+            timeLabel = "14:00"
+        )
+        var savedEvent: com.example.domain.model.CalendarEvent? = null
+        val state = sampleUiState().copy(
+            todayDate = today,
+            calendarEvents = listOf(sampleEvent)
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                com.example.ui.screens.CalendarScreen(
+                    uiState = state,
+                    onJumpToWeek = {},
+                    onSaveEvent = { savedEvent = it },
+                    onDeleteEvent = {}
+                )
+            }
+        }
+
+        // Event dot on month cell and event row in list (scroll down LazyColumn for event card)
+        composeRule.onNodeWithTag("calendar_event_dot_2026_11_26", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("calendar_event_item_10"))
+        composeRule.onNodeWithTag("calendar_event_item_10").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Họp tổ chuyên môn")[0].assertIsDisplayed()
+
+        // Open add event dialog & verify input
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("calendar_add_event_button"))
+        composeRule.onNodeWithTag("calendar_add_event_button").performClick()
+        composeRule.onNodeWithTag("calendar_event_title_input").assertIsDisplayed()
     }
 }

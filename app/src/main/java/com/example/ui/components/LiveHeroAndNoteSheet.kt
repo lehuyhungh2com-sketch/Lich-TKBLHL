@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Room
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Upcoming
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -58,7 +59,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.WidgetCornerStyle
-import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.domain.lunar.LunarCalendar
 import com.example.domain.lunar.VnDate
@@ -496,7 +496,8 @@ fun LessonNoteEditorSheet(
     existingNote: String,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onFindSubstitute: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var noteText by remember(period.slotId, existingNote) { mutableStateOf(existingNote) }
@@ -613,6 +614,24 @@ fun LessonNoteEditorSheet(
                     Text("Lưu ghi chú")
                 }
             }
+
+            if (onFindSubstitute != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onFindSubstitute()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("lesson_note_find_substitute_button")
+                ) {
+                    Icon(Icons.Rounded.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Tìm người đổi tiết / dạy thay cho tiết này")
+                }
+            }
         }
     }
 }
@@ -633,7 +652,7 @@ fun LiveTimetableOnlyPreviewCard(
     opacity: Float,
     textTheme: WidgetTextTheme,
     cornerStyle: WidgetCornerStyle,
-    fontSize: WidgetFontSize,
+    fontScale: Float,
     showSubject: Boolean,
     isSundayPreview: Boolean = today.isSunday,
     modifier: Modifier = Modifier
@@ -657,9 +676,9 @@ fun LiveTimetableOnlyPreviewCard(
     val nextBg = if (useLightText) Color(0x28FB923C) else Color(0x22EA580C)
     val tileBg = if (isTransparent) Color.Transparent else tileBase.copy(alpha = (clampedAlpha * 0.90f).coerceIn(0f, 1f))
     val rootBg = if (isTransparent) Color.Transparent else bgBase.copy(alpha = clampedAlpha)
-    val delta = fontSize.deltaSp
     val lunar = LunarCalendar.convertSolar2Lunar(today)
     val lunarShort = "${lunar.day}/${lunar.month}${if (lunar.isLeap) "N" else ""} ÂL"
+    fun sp(base: Float) = (base * fontScale).coerceIn(8.5f, 34f).sp
 
     val teachingNow = if (isSundayPreview) null else todayPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.TEACHING_NOW }
     val nextPeriod = if (isSundayPreview) null else todayPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.NEXT_PERIOD }
@@ -697,7 +716,7 @@ fun LiveTimetableOnlyPreviewCard(
                         } else {
                             "TKB ${today.vietnameseWeekday} · Tuần $weekNumber"
                         },
-                        fontSize = (13f + delta).sp,
+                        fontSize = sp(13f),
                         fontWeight = FontWeight.Bold,
                         color = accentOrange,
                         maxLines = 1,
@@ -705,7 +724,7 @@ fun LiveTimetableOnlyPreviewCard(
                     )
                     Text(
                         text = "${today.formatFullVietnamese()} ($lunarShort)",
-                        fontSize = (10f + delta * 0.4f).sp,
+                        fontSize = sp(10f),
                         color = secondaryText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -715,7 +734,7 @@ fun LiveTimetableOnlyPreviewCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = teacherName,
-                        fontSize = 11.sp,
+                        fontSize = sp(11f),
                         fontWeight = FontWeight.Medium,
                         color = primaryText,
                         maxLines = 1,
@@ -762,7 +781,7 @@ fun LiveTimetableOnlyPreviewCard(
                 ) {
                     Text(
                         text = statusText,
-                        fontSize = (10.5f + delta * 0.4f).sp,
+                        fontSize = sp(10.5f),
                         fontWeight = FontWeight.Bold,
                         color = statusColor,
                         maxLines = 1,
@@ -780,12 +799,13 @@ fun LiveTimetableOnlyPreviewCard(
                     } else {
                         "Hôm nay không có tiết dạy."
                     },
-                    fontSize = (12f + delta * 0.5f).sp,
+                    fontSize = sp(12f),
                     color = secondaryText,
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
             } else {
                 val visible = todayPeriods.take(5)
+                val tagColWidth = (38f * fontScale.coerceAtLeast(1f)).dp
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     visible.forEach { p ->
                         val isNow = p.liveStatus == PeriodLiveStatus.TEACHING_NOW
@@ -820,15 +840,15 @@ fun LiveTimetableOnlyPreviewCard(
                         ) {
                             Text(
                                 text = tag,
-                                fontSize = (11f + delta).sp,
+                                fontSize = sp(11.5f),
                                 fontWeight = FontWeight.Bold,
                                 color = tagColor,
                                 maxLines = 1,
-                                modifier = Modifier.width(38.dp)
+                                modifier = Modifier.width(tagColWidth)
                             )
                             Text(
                                 text = if (showSubject) "$cls · ${p.subjectName}" else "Lớp $cls",
-                                fontSize = (11.5f + delta).sp,
+                                fontSize = sp(12f),
                                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isPast) mutedPastText else primaryText,
                                 maxLines = 1,
@@ -838,7 +858,7 @@ fun LiveTimetableOnlyPreviewCard(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (isNow) "${p.startTime.formatHHmm()}–${p.endTime.formatHHmm()}" else p.startTime.formatHHmm(),
-                                fontSize = (10f + delta * 0.4f).sp,
+                                fontSize = sp(10.5f),
                                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Normal,
                                 color = when {
                                     isNow -> liveAccent
@@ -855,7 +875,7 @@ fun LiveTimetableOnlyPreviewCard(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "+${todayPeriods.size - visible.size} tiết nữa trong ngày...",
-                        fontSize = 10.sp,
+                        fontSize = sp(10f),
                         color = secondaryText,
                         maxLines = 1
                     )

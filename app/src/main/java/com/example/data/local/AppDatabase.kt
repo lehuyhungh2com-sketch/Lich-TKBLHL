@@ -20,9 +20,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SyncMetadataEntity::class,
         WeekSyncVersionEntity::class,
         WeatherCacheEntity::class,
-        LessonNoteEntity::class
+        LessonNoteEntity::class,
+        TimetableSlotSnapshotEntity::class,
+        CalendarEventEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -52,6 +54,38 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `timetable_slot_snapshots` (
+                        `week` INTEGER NOT NULL,
+                        `slotsJson` TEXT NOT NULL,
+                        `savedAtMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`week`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `calendar_events` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `note` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `isLunar` INTEGER NOT NULL,
+                        `year` INTEGER NOT NULL,
+                        `month` INTEGER NOT NULL,
+                        `day` INTEGER NOT NULL,
+                        `isRecurringYearly` INTEGER NOT NULL,
+                        `timeLabel` TEXT NOT NULL,
+                        `createdAtMillis` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -59,7 +93,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "lhl_timetable_cache.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { INSTANCE = it }

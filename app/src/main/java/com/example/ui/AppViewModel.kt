@@ -12,20 +12,23 @@ import com.example.data.local.LessonNoteEntity
 import com.example.data.local.SyncMetadataEntity
 import com.example.data.local.UserPreferencesState
 import com.example.data.local.WidgetCornerStyle
-import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
 import com.example.data.repository.LoginResult
 import com.example.domain.lunar.LunarCalendar
 import com.example.domain.lunar.LunarDate
 import com.example.domain.lunar.VnDate
 import com.example.domain.lunar.VnTime
+import com.example.domain.model.Assignment
+import com.example.domain.model.CalendarEvent
 import com.example.domain.model.ResolvedPeriod
 import com.example.domain.model.SchoolClass
 import com.example.domain.model.SchoolConfig
 import com.example.domain.model.Teacher
 import com.example.domain.model.TimetableCalculator
+import com.example.domain.model.TimetableSlot
 import com.example.domain.model.WeatherSnapshot
 import com.example.domain.model.WeekInfo
+import com.example.domain.model.WorkloadStatsSummary
 import com.example.notification.NotificationHelper
 import com.example.notification.ReminderAlarmReceiver
 import com.example.widget.WidgetUpdater
@@ -37,6 +40,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -49,6 +53,7 @@ data class MainUiState(
     val homeroomClass: SchoolClass? = null,
     val allTeachers: List<Teacher> = emptyList(),
     val allClasses: List<SchoolClass> = emptyList(),
+    val allAssignments: List<Assignment> = emptyList(),
     val schoolConfig: SchoolConfig = SchoolConfig(),
     val weeks: List<WeekInfo> = emptyList(),
     val currentWeekNumber: Int = 1,
@@ -64,7 +69,11 @@ data class MainUiState(
     val selectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val allSelectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val currentWeekPeriods: List<ResolvedPeriod> = emptyList(),
+    val changedPeriodCount: Int = 0,
+    val changeComparisonLabel: String? = null,
+    val workloadStats: WorkloadStatsSummary = WorkloadStatsSummary(),
     val lessonNotes: Map<String, String> = emptyMap(),
+    val calendarEvents: List<CalendarEvent> = emptyList(),
     val weather: WeatherSnapshot? = null,
     val syncMetadata: SyncMetadataEntity? = null,
     val isSyncing: Boolean = false,
@@ -166,14 +175,100 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         schoolRepo.observeSlotsForWeek(week)
     }
 
+    private val previousWeekSlotsFlow = effectiveSelectedWeekFlow.flatMapLatest { week ->
+        if (week > TimetableCalculator.MIN_WEEK) {
+            schoolRepo.observeSlotsForWeek(week - 1)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+
+    private val selectedWeekSnapshotFlow = effectiveSelectedWeekFlow.flatMapLatest { week ->
+        schoolRepo.observeSlotSnapshotForWeek(week)
+    }
+
+    private val baselineSlotsBundleFlow = combine(
+        previousWeekSlotsFlow,
+        selectedWeekSnapshotFlow
+    ) { prevWeekSlots, syncSnapshotSlots ->
+        prevWeekSlots to syncSnapshotSlots
+    }
+
+    private val workloadStatsFlow = combine(
+        catalogFlow,
+        effectiveSelectedWeekFlow,
+        selectedWeekSlotsFlow,
+        schoolRepo.allSlotsFlow,
+        prefsRepo.preferencesFlow
+    ) { catalog, selectedWeek, selectedWeekSlots, allCachedSlots, prefs ->
+        val currentTeacher = prefs.loggedInTeacherId?.let { id ->
+            catalog.teachers.firstOrNull { it.id == id }
+        }
+        if (currentTeacher == null) {
+            WorkloadStatsSummary(selectedWeek = selectedWeek)
+        } else {
+            val homeroomClassId = TimetableCalculator.resolveHomeroomClassId(currentTeacher, catalog.classes)
+            val showHomeroom = prefs.showHomeroomClass && !homeroomClassId.isNullOrBlank()
+            val filterTeacherId = if (showHomeroom) null else currentTeacher.id
+            val filterClassId = if (showHomeroom) homeroomClassId else null
+            val selectedWeekInfo = catalog.weeks.firstOrNull { it.weekNumber == selectedWeek }
+            val selectedResolved = TimetableCalculator.resolveWeekPeriods(
+                weekNumber = selectedWeek,
+                rawSlots = selectedWeekSlots,
+                schoolConfig = catalog.config,
+                weekInfo = selectedWeekInfo,
+                deletedSlotKeys = catalog.deletedKeys,
+                teachers = catalog.teachers,
+                classes = catalog.classes,
+                subjects = catalog.subjects,
+                assignments = catalog.assignments,
+                filterTeacherId = filterTeacherId,
+                filterClassId = filterClassId
+            )
+            TimetableCalculator.calculateWorkloadStats(
+                selectedWeek = selectedWeek,
+                selectedWeekPeriods = selectedResolved,
+                allCachedSlots = allCachedSlots,
+                schoolConfig = catalog.config,
+                weeks = catalog.weeks,
+                deletedSlotKeys = catalog.deletedKeys,
+                teachers = catalog.teachers,
+                classes = catalog.classes,
+                subjects = catalog.subjects,
+                assignments = catalog.assignments,
+                filterTeacherId = filterTeacherId,
+                filterClassId = filterClassId
+            )
+        }
+    }
+
     private val metaAndWeatherFlow = combine(
         weatherRepo.weatherFlow,
         schoolRepo.syncMetadataFlow,
         prefsRepo.preferencesFlow,
         transientStatus,
-        schoolRepo.lessonNotesFlow
-    ) { weather, syncMeta, prefs, status, notes ->
-        MetaWeatherPrefs(weather, syncMeta, prefs, status, notes)
+        combine(schoolRepo.lessonNotesFlow, schoolRepo.calendarEventsFlow) { notes, events ->
+            notes to events
+        }
+    ) { weather, syncMeta, prefs, status, (notes, events) ->
+        MetaWeatherPrefs(weather, syncMeta, prefs, status, notes, events)
+    }
+
+    private val slotsAndStatsBundleFlow = combine(
+        currentWeekSlotsFlow,
+        selectedWeekSlotsFlow,
+        baselineSlotsBundleFlow,
+        workloadStatsFlow,
+        metaAndWeatherFlow
+    ) { curSlots, selSlots, baselinePair, workloadStats, mwp ->
+        SlotsAndMetaBundle(
+            currentWeekSlots = curSlots,
+            selectedWeekSlots = selSlots,
+            previousWeekSlots = baselinePair.first,
+            snapshotWeekSlots = baselinePair.second,
+            workloadStats = workloadStats,
+            meta = mwp
+        )
     }
 
     val uiState: StateFlow<MainUiState> = combine(
@@ -181,10 +276,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         clockTickFlow,
         currentWeekFlow,
         effectiveSelectedWeekFlow,
-        combine(currentWeekSlotsFlow, selectedWeekSlotsFlow, metaAndWeatherFlow) { curSlots, selSlots, mwp ->
-            Triple(curSlots, selSlots, mwp)
-        }
-    ) { catalog, (today, now), currentWeek, selectedWeek, (currentWeekSlots, selectedWeekSlots, mwp) ->
+        slotsAndStatsBundleFlow
+    ) { catalog, (today, now), currentWeek, selectedWeek, bundle ->
+        val currentWeekSlots = bundle.currentWeekSlots
+        val selectedWeekSlots = bundle.selectedWeekSlots
+        val mwp = bundle.meta
         val prefs = mwp.prefs
         val currentTeacher = prefs.loggedInTeacherId?.let { id ->
             catalog.teachers.firstOrNull { it.id == id }
@@ -245,7 +341,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             emptyList()
         }
 
-        val selectedWeekResolved = if (currentTeacher != null) {
+        val selectedWeekRaw = if (currentTeacher != null) {
             TimetableCalculator.resolveWeekPeriods(
                 weekNumber = selectedWeek,
                 rawSlots = selectedWeekSlots,
@@ -265,7 +361,71 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             emptyList()
         }
 
-        val todayPeriods = currentWeekResolved.filter { it.day == targetDayCode }
+        // Compare against previous sync snapshot (same week) first if present and non-empty,
+        // else compare against previous week's cached slots (week - 1) with zero Firestore reads.
+        val (changedSlotIds, comparisonLabel) = if (currentTeacher != null && selectedWeekRaw.isNotEmpty()) {
+            val snapResolved = if (bundle.snapshotWeekSlots.isNotEmpty()) {
+                TimetableCalculator.resolveWeekPeriods(
+                    weekNumber = selectedWeek,
+                    rawSlots = bundle.snapshotWeekSlots,
+                    schoolConfig = catalog.config,
+                    weekInfo = selectedWeekInfo,
+                    deletedSlotKeys = catalog.deletedKeys,
+                    teachers = catalog.teachers,
+                    classes = catalog.classes,
+                    subjects = catalog.subjects,
+                    assignments = catalog.assignments,
+                    filterTeacherId = filterTeacherId,
+                    filterClassId = filterClassId
+                )
+            } else {
+                emptyList()
+            }
+            val snapDiffs = TimetableCalculator.detectChangedSlotIds(selectedWeekRaw, snapResolved)
+            if (snapDiffs.isNotEmpty()) {
+                snapDiffs to "so với bản đồng bộ trước"
+            } else if (selectedWeek > TimetableCalculator.MIN_WEEK && bundle.previousWeekSlots.isNotEmpty()) {
+                val prevWeekNum = selectedWeek - 1
+                val prevWeekInfo = catalog.weeks.firstOrNull { it.weekNumber == prevWeekNum }
+                val prevWeekResolved = TimetableCalculator.resolveWeekPeriods(
+                    weekNumber = prevWeekNum,
+                    rawSlots = bundle.previousWeekSlots,
+                    schoolConfig = catalog.config,
+                    weekInfo = prevWeekInfo,
+                    deletedSlotKeys = catalog.deletedKeys,
+                    teachers = catalog.teachers,
+                    classes = catalog.classes,
+                    subjects = catalog.subjects,
+                    assignments = catalog.assignments,
+                    filterTeacherId = filterTeacherId,
+                    filterClassId = filterClassId
+                )
+                val prevDiffs = TimetableCalculator.detectChangedSlotIds(selectedWeekRaw, prevWeekResolved)
+                if (prevDiffs.isNotEmpty()) {
+                    prevDiffs to "so với Tuần $prevWeekNum"
+                } else {
+                    emptySet<String>() to null
+                }
+            } else {
+                emptySet<String>() to null
+            }
+        } else {
+            emptySet<String>() to null
+        }
+
+        val selectedWeekResolved = if (changedSlotIds.isEmpty()) {
+            selectedWeekRaw
+        } else {
+            selectedWeekRaw.map { if (it.slotId in changedSlotIds) it.copy(isChanged = true) else it }
+        }
+
+        val effectiveCurrentWeekResolved = if (selectedWeek == currentWeek && changedSlotIds.isNotEmpty()) {
+            currentWeekResolved.map { if (it.slotId in changedSlotIds) it.copy(isChanged = true) else it }
+        } else {
+            currentWeekResolved
+        }
+
+        val todayPeriods = effectiveCurrentWeekResolved.filter { it.day == targetDayCode }
         val teacherTodayPeriods = if (!showHomeroom) {
             todayPeriods
         } else if (currentTeacher != null) {
@@ -297,6 +457,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             homeroomClass = homeroomClass,
             allTeachers = catalog.teachers.sortedBy { it.name },
             allClasses = catalog.classes.sortedWith(compareBy({ it.grade }, { it.name })),
+            allAssignments = catalog.assignments,
             schoolConfig = catalog.config,
             weeks = catalog.weeks,
             currentWeekNumber = currentWeek,
@@ -311,8 +472,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             teacherTodayPeriods = teacherTodayPeriods,
             selectedWeekPeriods = selectedWeekResolved,
             allSelectedWeekPeriods = allSelectedWeekResolved,
-            currentWeekPeriods = currentWeekResolved,
+            currentWeekPeriods = effectiveCurrentWeekResolved,
+            changedPeriodCount = changedSlotIds.size,
+            changeComparisonLabel = comparisonLabel,
+            workloadStats = bundle.workloadStats,
             lessonNotes = mwp.lessonNotes,
+            calendarEvents = mwp.calendarEvents,
             weather = mwp.weather,
             syncMetadata = mwp.syncMeta,
             isSyncing = mwp.status.isSyncing,
@@ -402,7 +567,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun syncNow(force: Boolean = true) {
+    fun syncNow(force: Boolean = false) {
         viewModelScope.launch {
             transientStatus.value = transientStatus.value.copy(isSyncing = true)
             val outcome = schoolRepo.syncIncremental(
@@ -456,6 +621,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteLessonNote(period: ResolvedPeriod) {
         saveLessonNote(period, "")
+    }
+
+    fun saveCalendarEvent(event: CalendarEvent) {
+        viewModelScope.launch {
+            schoolRepo.saveCalendarEvent(event)
+            transientStatus.value = transientStatus.value.copy(
+                syncStatusBanner = if (event.id == 0L) "Đã thêm sự kiện vào lịch cá nhân." else "Đã cập nhật sự kiện."
+            )
+        }
+    }
+
+    fun deleteCalendarEvent(eventId: Long) {
+        viewModelScope.launch {
+            schoolRepo.deleteCalendarEvent(eventId)
+            transientStatus.value = transientStatus.value.copy(
+                syncStatusBanner = "Đã xóa sự kiện khỏi lịch."
+            )
+        }
     }
 
     fun refreshWeatherSilently() {
@@ -557,7 +740,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         opacity: Float,
         textTheme: WidgetTextTheme,
         cornerStyle: WidgetCornerStyle,
-        fontSize: WidgetFontSize,
+        fontScale: Float,
         showSubject: Boolean
     ) {
         widgetUpdateJob?.cancel()
@@ -569,7 +752,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 opacity = normalizedOpacity,
                 textTheme = textTheme,
                 cornerStyle = cornerStyle,
-                fontSize = fontSize,
+                fontScale = fontScale,
                 showSubject = showSubject
             )
             WidgetUpdater.updateAllWidgets(app)
@@ -592,5 +775,15 @@ private data class MetaWeatherPrefs(
     val syncMeta: SyncMetadataEntity?,
     val prefs: UserPreferencesState,
     val status: TransientStatus,
-    val lessonNotes: Map<String, String>
+    val lessonNotes: Map<String, String>,
+    val calendarEvents: List<CalendarEvent>
+)
+
+private data class SlotsAndMetaBundle(
+    val currentWeekSlots: List<TimetableSlot>,
+    val selectedWeekSlots: List<TimetableSlot>,
+    val previousWeekSlots: List<TimetableSlot>,
+    val snapshotWeekSlots: List<TimetableSlot>,
+    val workloadStats: WorkloadStatsSummary,
+    val meta: MetaWeatherPrefs
 )

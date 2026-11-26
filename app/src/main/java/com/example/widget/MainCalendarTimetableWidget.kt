@@ -83,7 +83,6 @@ private fun MainWidgetContent(data: WidgetRenderData) {
     val context = LocalContext.current
     val size = LocalSize.current
     val palette = data.palette
-    val delta = data.fontDeltaSp
     val radius = data.cornerRadiusDp.dp
 
     val openTodayAction = actionStartActivity(
@@ -147,7 +146,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                         text = "${data.today.vietnameseWeekday}, ${data.today.formatDayMonth()}",
                         style = TextStyle(
                             color = ColorProvider(palette.primaryText),
-                            fontSize = (11f + delta * 0.5f).coerceAtLeast(10f).sp,
+                            fontSize = data.sp(11f, minSp = 9.5f),
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
@@ -169,7 +168,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                             text = data.weather?.let { "${it.currentTemp}°" } ?: "--°",
                             style = TextStyle(
                                 color = ColorProvider(palette.primaryText),
-                                fontSize = 18.sp,
+                                fontSize = data.sp(18f),
                                 fontWeight = FontWeight.Bold
                             ),
                             maxLines = 1
@@ -179,7 +178,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                         text = data.weather?.locationName ?: "Hậu Lộc",
                         style = TextStyle(
                             color = ColorProvider(palette.secondaryText),
-                            fontSize = 9.sp
+                            fontSize = data.sp(9f)
                         ),
                         maxLines = 1
                     )
@@ -233,7 +232,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                     text = "${data.today.vietnameseWeekday}, ${data.today.formatDayMonth()}",
                     style = TextStyle(
                         color = ColorProvider(palette.primaryText),
-                        fontSize = (12f + delta * 0.5f).coerceAtLeast(10.5f).sp,
+                        fontSize = data.sp(12f, minSp = 10f),
                         fontWeight = FontWeight.Medium
                     ),
                     maxLines = 1
@@ -246,7 +245,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                         text = data.lunarBadgeText,
                         style = TextStyle(
                             color = ColorProvider(palette.pillText),
-                            fontSize = 10.sp,
+                            fontSize = data.sp(10f),
                             fontWeight = FontWeight.Medium
                         ),
                         maxLines = 1
@@ -262,7 +261,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                             text = data.lunarBadgeText,
                             style = TextStyle(
                                 color = ColorProvider(palette.pillText),
-                                fontSize = 10.sp,
+                                fontSize = data.sp(10f),
                                 fontWeight = FontWeight.Medium
                             ),
                             maxLines = 1
@@ -286,7 +285,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                         text = data.weather?.let { "${it.currentTemp}°" } ?: "--°",
                         style = TextStyle(
                             color = ColorProvider(palette.primaryText),
-                            fontSize = 21.sp,
+                            fontSize = data.sp(21f),
                             fontWeight = FontWeight.Bold
                         ),
                         maxLines = 1
@@ -302,7 +301,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                     text = weatherLine,
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = 10.sp
+                        fontSize = data.sp(10f)
                     ),
                     maxLines = 1
                 )
@@ -315,7 +314,7 @@ private fun MainWidgetContent(data: WidgetRenderData) {
                         text = locLine,
                         style = TextStyle(
                             color = ColorProvider(palette.secondaryText),
-                            fontSize = 10.sp
+                            fontSize = data.sp(10f)
                         ),
                         maxLines = 1
                     )
@@ -371,7 +370,6 @@ private fun TimetableColumn(
     onClickAction: Action,
     modifier: GlanceModifier = GlanceModifier
 ) {
-    val delta = data.fontDeltaSp
     val liveBadge = data.liveStatusBadgeText()
 
     Column(
@@ -392,7 +390,7 @@ private fun TimetableColumn(
                 text = headerTitle,
                 style = TextStyle(
                     color = ColorProvider(palette.accentOrange),
-                    fontSize = (11f + delta * 0.5f).coerceAtLeast(10f).sp,
+                    fontSize = data.sp(11f, minSp = 9.5f),
                     fontWeight = FontWeight.Bold
                 ),
                 maxLines = 1,
@@ -421,7 +419,7 @@ private fun TimetableColumn(
                 text = liveBadge.first,
                 style = TextStyle(
                     color = ColorProvider(liveBadge.second),
-                    fontSize = (9.5f + delta * 0.4f).coerceAtLeast(9f).sp,
+                    fontSize = data.sp(9.5f),
                     fontWeight = FontWeight.Bold
                 ),
                 maxLines = 1
@@ -438,7 +436,7 @@ private fun TimetableColumn(
                     text = "Chạm để đăng nhập xem TKB",
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = 12.sp
+                        fontSize = data.sp(12f)
                     ),
                     maxLines = 2
                 )
@@ -453,7 +451,7 @@ private fun TimetableColumn(
                     },
                     style = TextStyle(
                         color = ColorProvider(palette.secondaryText),
-                        fontSize = 12.sp
+                        fontSize = data.sp(12f)
                     ),
                     maxLines = 2
                 )
@@ -483,7 +481,7 @@ private fun TimetableColumn(
                         text = "+${allPeriods.size - maxVisible} tiết nữa...",
                         style = TextStyle(
                             color = ColorProvider(palette.secondaryText),
-                            fontSize = 10.sp
+                            fontSize = data.sp(10f)
                         ),
                         maxLines = 1
                     )
@@ -500,7 +498,6 @@ private fun SamsungStylePeriodRow(
     palette: WidgetPalette,
     verticalPadding: Dp
 ) {
-    val delta = data.fontDeltaSp
     val isNow = period.liveStatus == PeriodLiveStatus.TEACHING_NOW
     val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
     val isPast = period.liveStatus == PeriodLiveStatus.PAST
@@ -537,6 +534,7 @@ private fun SamsungStylePeriodRow(
             .padding(horizontal = 4.dp, vertical = verticalPadding)
         else -> GlanceModifier.padding(vertical = verticalPadding)
     }
+    val tagColWidth = (32f * data.fontScale.coerceAtLeast(1f)).dp
 
     Row(
         modifier = GlanceModifier
@@ -548,17 +546,17 @@ private fun SamsungStylePeriodRow(
             text = periodTag,
             style = TextStyle(
                 color = ColorProvider(tagColor),
-                fontSize = (10.5f + delta).coerceAtLeast(9.5f).sp,
+                fontSize = data.sp(10.5f, minSp = 9f),
                 fontWeight = FontWeight.Bold
             ),
-            modifier = GlanceModifier.width(32.dp),
+            modifier = GlanceModifier.width(tagColWidth),
             maxLines = 1
         )
         Text(
             text = data.formatPeriodTitle(period),
             style = TextStyle(
                 color = ColorProvider(textColor),
-                fontSize = (11.5f + delta).coerceAtLeast(10f).sp,
+                fontSize = data.sp(11.5f, minSp = 9.5f),
                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium
             ),
             modifier = GlanceModifier.defaultWeight(),
@@ -569,7 +567,7 @@ private fun SamsungStylePeriodRow(
             text = period.startTime.formatHHmm(),
             style = TextStyle(
                 color = ColorProvider(timeColor),
-                fontSize = (10.5f + delta * 0.5f).coerceAtLeast(9.5f).sp,
+                fontSize = data.sp(10.5f, minSp = 9f),
                 fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Normal,
                 textAlign = TextAlign.End
             ),
@@ -616,7 +614,7 @@ internal fun WidgetWeekStripRow(
                     text = day.solar.shortDayCode,
                     style = TextStyle(
                         color = ColorProvider(dayLabelColor),
-                        fontSize = 10.sp,
+                        fontSize = data.sp(10f),
                         fontWeight = if (isToday || isSunday) FontWeight.Bold else FontWeight.Medium,
                         textAlign = TextAlign.Center
                     ),
@@ -626,7 +624,7 @@ internal fun WidgetWeekStripRow(
                     text = day.solar.day.toString(),
                     style = TextStyle(
                         color = ColorProvider(solarColor),
-                        fontSize = 14.sp,
+                        fontSize = data.sp(14f),
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     ),
@@ -636,7 +634,7 @@ internal fun WidgetWeekStripRow(
                     text = day.lunar.formatCellLabel(),
                     style = TextStyle(
                         color = ColorProvider(lunarColor),
-                        fontSize = 10.sp,
+                        fontSize = data.sp(10f),
                         textAlign = TextAlign.Center
                     ),
                     maxLines = 1

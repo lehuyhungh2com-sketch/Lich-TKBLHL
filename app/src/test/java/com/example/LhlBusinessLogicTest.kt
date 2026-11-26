@@ -4,7 +4,10 @@ import com.example.domain.lunar.LunarCalendar
 import com.example.domain.lunar.VnDate
 import com.example.domain.lunar.VnTime
 import com.example.domain.model.Assignment
+import com.example.domain.model.CalendarEvent
+import com.example.domain.model.CalendarEventCategory
 import com.example.domain.model.PeriodLiveStatus
+import com.example.domain.model.ResolvedPeriod
 import com.example.domain.model.SchoolClass
 import com.example.domain.model.SchoolConfig
 import com.example.domain.model.Subject
@@ -133,5 +136,137 @@ class LhlBusinessLogicTest {
         assertEquals("Sinh học", TimetableCalculator.readableSubjectName("sub-khtn-sinh", "KHTN-SINH", "KHTN-SINH"))
         assertEquals("Tin học", TimetableCalculator.readableSubjectName("sub-tin", "Tin học", "Tin"))
         assertEquals("7A2", TimetableCalculator.compactClassName("Lớp 7A2"))
+    }
+
+    @Test
+    fun detectChangedSlotIds_flagsModifiedAndNewSlotsOnly() {
+        val base1 = ResolvedPeriod(
+            slotId = "b1", week = 11, day = "T2", period = 1, session = "morning",
+            classId = "6A1", className = "6A1", subjectId = "sub-tin", subjectName = "Tin học",
+            subjectShort = "Tin", teacherId = "gv1", teacherShortName = "Hùng", room = "P101",
+            note = null, customLabel = null, startTime = VnTime(7, 15), endTime = VnTime(8, 0)
+        )
+        val base2 = base1.copy(slotId = "b2", day = "T3", period = 2, classId = "7A1", className = "7A1")
+
+        val curSame = base1.copy(slotId = "c1", week = 12)
+        val curModifiedClass = base2.copy(slotId = "c2", week = 12, classId = "8A2", className = "8A2")
+        val curAdded = base1.copy(slotId = "c3", week = 12, day = "T5", period = 4)
+
+        val changed = TimetableCalculator.detectChangedSlotIds(
+            currentPeriods = listOf(curSame, curModifiedClass, curAdded),
+            baselinePeriods = listOf(base1, base2)
+        )
+        assertEquals(setOf("c2", "c3"), changed)
+    }
+
+    @Test
+    fun calculateWorkloadStats_aggregatesWeekAndCumulativeCachedWeeks() {
+        val teachers = listOf(Teacher(id = "gv1", name = "Lê Huy Hùng", shortName = "Hùng", email = "h@lhl.vn"))
+        val classes = listOf(
+            SchoolClass(id = "6A1", name = "6A1", grade = 6),
+            SchoolClass(id = "9A3", name = "9A3", grade = 9)
+        )
+        val subjects = listOf(Subject(id = "sub-tin", name = "Tin học", code = "Tin"))
+        val assignments = listOf(
+            Assignment(id = "a1", teacherId = "gv1", subjectId = "sub-tin", classId = "6A1", periodsPerWeek = 2),
+            Assignment(id = "a2", teacherId = "gv1", subjectId = "sub-tin", classId = "9A3", periodsPerWeek = 1)
+        )
+        val w1Slots = listOf(
+            TimetableSlot("w1_1", 1, "6A1", "T2", 1, "sub-tin", "gv1", session = "morning"),
+            TimetableSlot("w1_2", 1, "9A3", "T4", 1, "sub-tin", "gv1", session = "afternoon")
+        )
+        val w2Slots = listOf(
+            TimetableSlot("w2_1", 2, "6A1", "T2", 1, "sub-tin", "gv1", session = "morning"),
+            TimetableSlot("w2_2", 2, "6A1", "T3", 2, "sub-tin", "gv1", session = "morning")
+        )
+        val w2Resolved = TimetableCalculator.resolveWeekPeriods(
+            weekNumber = 2, rawSlots = w2Slots, schoolConfig = SchoolConfig(), weekInfo = null,
+            deletedSlotKeys = emptySet(), teachers = teachers, classes = classes, subjects = subjects,
+            assignments = assignments, filterTeacherId = "gv1"
+        )
+
+        val stats = TimetableCalculator.calculateWorkloadStats(
+            selectedWeek = 2,
+            selectedWeekPeriods = w2Resolved,
+            allCachedSlots = w1Slots + w2Slots,
+            schoolConfig = SchoolConfig(),
+            weeks = emptyList(),
+            deletedSlotKeys = emptySet(),
+            teachers = teachers,
+            classes = classes,
+            subjects = subjects,
+            assignments = assignments,
+            filterTeacherId = "gv1",
+            filterClassId = null
+        )
+
+        assertEquals(2, stats.weekMorningCount)
+        assertEquals(0, stats.weekAfternoonCount)
+        assertEquals(3, stats.weekAssignedQuota)
+        assertEquals(2, stats.yearCachedWeeksCount)
+        assertEquals(3, stats.yearMorningCount)
+        assertEquals(1, stats.yearAfternoonCount)
+        assertEquals(4, stats.yearTotalCount)
+        assertEquals(2, stats.byClass.size)
+        assertEquals(1, stats.bySubject.size)
+    }
+
+    @Test
+    fun suggestSubstituteTeachers_prioritizesSameClassAndDirectSwap() {
+        val me = Teacher(id = "gv1", name = "GV 1", shortName = "1", email = "1@lhl.vn", department = "Toán-Tin", mainSubject = "Tin học")
+        val sameClassTeacher = Teacher(id = "gv2", name = "GV 2", shortName = "2", email = "2@lhl.vn", department = "KHXH", mainSubject = "Ngữ văn")
+        val sameDeptTeacher = Teacher(id = "gv3", name = "GV 3", shortName = "3", email = "3@lhl.vn", department = "Toán-Tin", mainSubject = "Toán")
+        val busyTeacher = Teacher(id = "gv4", name = "GV 4", shortName = "4", email = "4@lhl.vn", department = "Toán-Tin", mainSubject = "Toán")
+
+        val myPeriod = ResolvedPeriod(
+            slotId = "s1", week = 12, day = "T2", period = 1, session = "morning",
+            classId = "7A1", className = "7A1", subjectId = "sub-tin", subjectName = "Tin học",
+            subjectShort = "Tin", teacherId = "gv1", teacherShortName = "1", room = "P1",
+            note = null, customLabel = null, startTime = VnTime(7, 15), endTime = VnTime(8, 0)
+        )
+        val sameClassOtherSlot = myPeriod.copy(
+            slotId = "s2", day = "T4", period = 3, subjectId = "sub-van", subjectName = "Ngữ văn",
+            subjectShort = "Văn", teacherId = "gv2", teacherShortName = "2"
+        )
+        val busyAtTargetSlot = myPeriod.copy(
+            slotId = "s3", classId = "8A1", className = "8A1", subjectId = "sub-toan",
+            subjectName = "Toán", subjectShort = "Toán", teacherId = "gv4", teacherShortName = "4"
+        )
+
+        val suggestions = TimetableCalculator.suggestSubstituteTeachers(
+            targetPeriod = myPeriod,
+            requesterTeacher = me,
+            allTeachers = listOf(me, sameClassTeacher, sameDeptTeacher, busyTeacher),
+            allWeekPeriods = listOf(myPeriod, sameClassOtherSlot, busyAtTargetSlot),
+            assignments = emptyList()
+        )
+
+        // busyTeacher (gv4) must be excluded; sameClassTeacher (gv2) ranks first with swap hint!
+        assertEquals(2, suggestions.size)
+        assertEquals("gv2", suggestions[0].teacher.id)
+        assertTrue(suggestions[0].teachesSameClass)
+        assertTrue(suggestions[0].swapSlotHint?.contains("T4 Sáng T3") == true)
+        assertEquals("gv3", suggestions[1].teacher.id)
+        assertTrue(suggestions[1].sameDepartment)
+    }
+
+    @Test
+    fun eventMatchesDate_supportsSolarLunarAndRecurringYearly() {
+        val solar = VnDate(2026, 11, 25)
+        val lunar = LunarCalendar.convertSolar2Lunar(solar) // 17/10/2026 AL
+
+        val solarOneOff = CalendarEvent(
+            id = 1, title = "Họp", category = CalendarEventCategory.MEETING,
+            isLunar = false, year = 2026, month = 11, day = 25, isRecurringYearly = false
+        )
+        val lunarRecurring = CalendarEvent(
+            id = 2, title = "Giỗ / Kỷ niệm", category = CalendarEventCategory.ANNIVERSARY,
+            isLunar = true, year = 2020, month = 10, day = 17, isRecurringYearly = true
+        )
+        val lunarOtherDay = lunarRecurring.copy(day = 18)
+
+        assertTrue(TimetableCalculator.eventMatchesDate(solarOneOff, solar, lunar))
+        assertTrue(TimetableCalculator.eventMatchesDate(lunarRecurring, solar, lunar))
+        assertFalse(TimetableCalculator.eventMatchesDate(lunarOtherDay, solar, lunar))
     }
 }

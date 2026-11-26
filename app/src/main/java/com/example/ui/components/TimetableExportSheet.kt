@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -326,6 +327,7 @@ fun TimetableExportSheet(
                     },
                     enabled = scopedPeriods.isNotEmpty(),
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 48.dp)
@@ -337,7 +339,7 @@ fun TimetableExportSheet(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Tải ảnh về máy", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Tải ảnh về máy", textAlign = TextAlign.Center, maxLines = 2)
                 }
 
                 Button(
@@ -360,6 +362,7 @@ fun TimetableExportSheet(
                     },
                     enabled = scopedPeriods.isNotEmpty(),
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                     modifier = Modifier
                         .weight(1f)
                         .heightIn(min = 48.dp)
@@ -371,7 +374,7 @@ fun TimetableExportSheet(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Gửi / Chia sẻ", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Gửi / Chia sẻ", textAlign = TextAlign.Center, maxLines = 2)
                 }
             }
         }
