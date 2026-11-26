@@ -118,7 +118,7 @@ fun LhlTimetableTheme(
     val baseDensity = LocalDensity.current
     val scaledDensity = Density(
         density = baseDensity.density,
-        fontScale = (baseDensity.fontScale * fontScale.multiplier).coerceIn(0.85f, 1.55f)
+        fontScale = (baseDensity.fontScale * fontScale.multiplier).coerceIn(0.85f, 1.65f)
     )
 
     CompositionLocalProvider(

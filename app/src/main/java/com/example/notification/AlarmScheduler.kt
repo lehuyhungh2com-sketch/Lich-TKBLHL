@@ -178,27 +178,31 @@ object AlarmScheduler {
     }
 
     private fun scheduleWorkManagerBackup(context: Context) {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-        val request = PeriodicWorkRequestBuilder<DailySyncWorker>(6, TimeUnit.HOURS)
-            .setConstraints(constraints)
-            .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            WORK_PERIODIC_SYNC,
-            ExistingPeriodicWorkPolicy.KEEP,
-            request
-        )
+        runCatching {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val request = PeriodicWorkRequestBuilder<DailySyncWorker>(6, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_PERIODIC_SYNC,
+                ExistingPeriodicWorkPolicy.KEEP,
+                request
+            )
+        }
     }
 
     private fun schedulePeriodicWidgetRefresh(context: Context) {
-        val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(15, TimeUnit.MINUTES)
-            .build()
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            WORK_PERIODIC_WIDGET_TICK,
-            ExistingPeriodicWorkPolicy.KEEP,
-            request
-        )
+        runCatching {
+            val request = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(15, TimeUnit.MINUTES)
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_PERIODIC_WIDGET_TICK,
+                ExistingPeriodicWorkPolicy.KEEP,
+                request
+            )
+        }
     }
 
     private fun nextTriggerMillis(hour: Int, minute: Int): Long {

@@ -220,18 +220,18 @@ fun CalendarScreen(
                                         val lunar = LunarCalendar.convertSolar2Lunar(cell)
 
                                         val bg = when {
-                                            isToday -> SunsetOrangeBright
+                                            isToday -> MaterialTheme.colorScheme.primary
                                             isSelected -> MaterialTheme.colorScheme.primaryContainer
                                             else -> Color.Transparent
                                         }
                                         val solarColor = when {
-                                            isToday -> Color.White
+                                            isToday -> MaterialTheme.colorScheme.onPrimary
                                             cell.isSunday -> SundayCoral
                                             else -> MaterialTheme.colorScheme.onSurface
                                         }
                                         val lunarColor = when {
-                                            isToday -> Color(0xFFFFEDD5)
-                                            lunar.isSpecialLunarDay -> SunsetOrange
+                                            isToday -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                                            lunar.isSpecialLunarDay -> MaterialTheme.colorScheme.primary
                                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                                         }
 
@@ -316,12 +316,12 @@ fun CalendarScreen(
                             Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = SunsetOrange.copy(alpha = 0.14f)
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                             ) {
                                 Text(
                                     text = selectedHoliday,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = SunsetOrange,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }

@@ -59,6 +59,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.BuildConfig
 import com.example.ui.MainUiState
 import com.example.ui.theme.SunsetOrange
 import com.example.ui.theme.SunsetOrangeBright
@@ -352,7 +353,7 @@ fun LoginScreen(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Chế độ CHỈ ĐỌC (Read-only) • Dự án tkbthcslhl-2026",
+                    text = "Chế độ CHỈ ĐỌC • tkbthcslhl-2026 • v${BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

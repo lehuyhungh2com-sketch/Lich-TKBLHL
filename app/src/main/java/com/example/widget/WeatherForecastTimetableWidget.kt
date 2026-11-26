@@ -336,8 +336,6 @@ private fun WeatherForecastTimetableContent(data: WidgetRenderData) {
                 .clickable(openTimetableAction)
         ) {
             val allPeriods = data.morningPeriods + data.afternoonPeriods
-            val teachingNow = allPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.TEACHING_NOW }
-            val nextPeriod = allPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.NEXT_PERIOD }
 
             // Timetable Header Row with Real-Time Active Status
             Row(

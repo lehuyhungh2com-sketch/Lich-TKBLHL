@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Application
+import androidx.work.Configuration
 import com.example.data.local.AppDatabase
 import com.example.data.local.AppPreferences
 import com.example.data.remote.FirestoreReadOnlyClient
@@ -14,9 +15,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class LhlTimetableApp : Application() {
+class LhlTimetableApp : Application(), Configuration.Provider {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
 
     lateinit var database: AppDatabase
         private set
@@ -48,8 +52,12 @@ class LhlTimetableApp : Application() {
 
         NotificationHelper.createChannels(this)
         appScope.launch {
-            ReminderAlarmReceiver.rescheduleFromLocal(this@LhlTimetableApp, this@LhlTimetableApp)
-            com.example.widget.WidgetUpdater.updateAllWidgets(this@LhlTimetableApp)
+            runCatching {
+                ReminderAlarmReceiver.rescheduleFromLocal(this@LhlTimetableApp, this@LhlTimetableApp)
+            }
+            runCatching {
+                com.example.widget.WidgetUpdater.updateAllWidgets(this@LhlTimetableApp)
+            }
         }
     }
 }

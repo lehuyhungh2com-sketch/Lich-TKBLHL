@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.rounded.EditNote
-import androidx.compose.material.icons.rounded.Check
 import com.example.data.local.WidgetCornerStyle
 import com.example.data.local.WidgetFontSize
 import com.example.data.local.WidgetTextTheme
@@ -428,22 +427,22 @@ fun WeekStripBar(
             val isToday = date == today
             val isSelected = date == selectedDate && !isToday
             val bg = when {
-                isToday -> SunsetOrangeBright
+                isToday -> MaterialTheme.colorScheme.primary
                 isSelected -> MaterialTheme.colorScheme.primaryContainer
                 else -> Color.Transparent
             }
             val dowColor = when {
-                isToday -> Color.White
+                isToday -> MaterialTheme.colorScheme.onPrimary
                 date.isSunday -> SundayCoral
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
             val solarColor = when {
-                isToday -> Color.White
+                isToday -> MaterialTheme.colorScheme.onPrimary
                 else -> MaterialTheme.colorScheme.onSurface
             }
             val lunarColor = when {
-                isToday -> Color(0xFFFFEDD5)
-                lunar.isSpecialLunarDay -> SunsetOrange
+                isToday -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                lunar.isSpecialLunarDay -> MaterialTheme.colorScheme.primary
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
 

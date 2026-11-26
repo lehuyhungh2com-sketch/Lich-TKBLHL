@@ -328,7 +328,7 @@ fun TodayScreen(
                                 SessionHeaderRow(
                                     icon = Icons.Rounded.WbSunny,
                                     title = "Buổi Sáng",
-                                    tint = SunsetOrange
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Column(verticalArrangement = Arrangement.spacedBy(if (isCompact) 6.dp else 8.dp)) {
@@ -553,7 +553,7 @@ private fun ExpandedWeatherDetails(
             Icon(
                 imageVector = Icons.Rounded.LocationOn,
                 contentDescription = null,
-                tint = SunsetOrangeBright,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))

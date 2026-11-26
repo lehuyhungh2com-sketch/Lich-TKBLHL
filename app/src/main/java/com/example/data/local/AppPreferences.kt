@@ -42,8 +42,8 @@ enum class AppAccentPalette(val key: String, val label: String) {
 
 enum class AppFontScale(val key: String, val label: String, val multiplier: Float) {
     NORMAL("normal", "Vừa", 1.0f),
-    LARGE("large", "Lớn", 1.12f),
-    XLARGE("xlarge", "Rất lớn", 1.24f);
+    LARGE("large", "Lớn", 1.15f),
+    XLARGE("xlarge", "Rất lớn", 1.30f);
 
     companion object {
         fun fromKey(key: String?): AppFontScale =
