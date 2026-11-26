@@ -60,7 +60,7 @@ import com.example.ui.MainUiState
 import com.example.ui.components.PeriodRowCard
 import com.example.ui.components.SegmentOption
 import com.example.ui.components.SegmentedOptionBar
-import com.example.util.TimetableShareHelper
+import com.example.ui.components.TimetableExportSheet
 
 /**
  * Offline school-wide lookup tool powered by already-synced Room data (zero extra Firestore reads):
@@ -99,6 +99,7 @@ fun SchoolLookupSheet(
         mutableIntStateOf(activePeriodNow?.period ?: 1)
     }
     var searchQuery by remember { mutableStateOf("") }
+    var pendingExportClass by remember { mutableStateOf<Pair<SchoolClass, List<ResolvedPeriod>>?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -151,21 +152,11 @@ fun SchoolLookupSheet(
                     selectedClassId = selectedClassId,
                     onSelectClass = { selectedClassId = it },
                     onShareClass = { cls, periods ->
-                        val (ws, we) = TimetableCalculator.getWeekDateRange(
-                            weekNumber = uiState.selectedWeekNumber,
-                            schoolConfig = uiState.schoolConfig,
-                            weeks = uiState.weeks
-                        )
-                        val ok = TimetableShareHelper.shareWeeklyTimetableImage(
-                            context = context,
-                            title = "TKB Lớp ${TimetableCalculator.compactClassName(cls.name)}",
-                            subtitle = uiState.schoolConfig.name,
-                            weekLabel = "Tuần ${uiState.selectedWeekNumber}",
-                            dateRange = "${ws.formatDayMonth()} – ${we.formatDayMonth()}/${we.year}",
-                            periods = periods,
-                            showTeacher = true
-                        )
-                        if (!ok) onNotify("Không thể tạo ảnh chia sẻ lúc này.")
+                        if (periods.isEmpty()) {
+                            onNotify("Lớp ${TimetableCalculator.compactClassName(cls.name)} chưa có tiết nào trong tuần này.")
+                        } else {
+                            pendingExportClass = cls to periods
+                        }
                     }
                 )
             } else {
@@ -183,6 +174,24 @@ fun SchoolLookupSheet(
                 )
             }
         }
+    }
+
+    pendingExportClass?.let { (cls, periods) ->
+        val (ws, we) = TimetableCalculator.getWeekDateRange(
+            weekNumber = uiState.selectedWeekNumber,
+            schoolConfig = uiState.schoolConfig,
+            weeks = uiState.weeks
+        )
+        TimetableExportSheet(
+            title = "TKB Lớp ${TimetableCalculator.compactClassName(cls.name)}",
+            subtitle = uiState.schoolConfig.name,
+            weekLabel = "Tuần ${uiState.selectedWeekNumber}",
+            dateRange = "${ws.formatDayMonth()} – ${we.formatDayMonth()}/${we.year}",
+            periods = periods,
+            showTeacher = true,
+            onDismiss = { pendingExportClass = null },
+            onNotify = onNotify
+        )
     }
 }
 

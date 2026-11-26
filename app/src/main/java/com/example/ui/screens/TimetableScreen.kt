@@ -71,10 +71,11 @@ import com.example.ui.components.LessonNoteEditorSheet
 import com.example.ui.components.PeriodRowCard
 import com.example.ui.components.SegmentOption
 import com.example.ui.components.SegmentedOptionBar
+import com.example.ui.components.TimetableExportSheet
 import com.example.ui.theme.EmeraldLive
 import com.example.ui.theme.LocalCompactDensity
 import com.example.ui.theme.SkyBlue
-import com.example.util.TimetableShareHelper
+import com.example.util.TimetableShareScope
 
 @Composable
 fun TimetableScreen(
@@ -92,6 +93,7 @@ fun TimetableScreen(
     var isMatrixView by rememberSaveable { mutableStateOf(false) }
     var selectedSessionFilter by rememberSaveable { mutableStateOf("all") } // "all" | "morning" | "afternoon"
     var showLookupSheet by rememberSaveable { mutableStateOf(false) }
+    var showExportSheet by rememberSaveable { mutableStateOf(false) }
     var editingPeriod by remember { mutableStateOf<ResolvedPeriod?>(null) }
 
     val (weekStart, weekEnd) = TimetableCalculator.getWeekDateRange(
@@ -346,26 +348,7 @@ fun TimetableScreen(
                                 if (uiState.selectedWeekPeriods.isEmpty()) {
                                     onNotify("Tuần ${uiState.selectedWeekNumber} chưa có tiết nào để xuất ảnh.")
                                 } else {
-                                    val shareTitle = if (uiState.effectiveShowHomeroom) {
-                                        val clsName = TimetableCalculator.compactClassName(
-                                            uiState.homeroomClass?.name ?: uiState.homeroomClassId.orEmpty()
-                                        )
-                                        "TKB Lớp $clsName"
-                                    } else {
-                                        "TKB ${uiState.currentTeacher?.name ?: "Giáo viên"}"
-                                    }
-                                    val ok = TimetableShareHelper.shareWeeklyTimetableImage(
-                                        context = context,
-                                        title = shareTitle,
-                                        subtitle = uiState.schoolConfig.name,
-                                        weekLabel = "Tuần ${uiState.selectedWeekNumber}",
-                                        dateRange = "${weekStart.formatDayMonth()} – ${weekEnd.formatDayMonth()}/${weekEnd.year}",
-                                        periods = uiState.selectedWeekPeriods,
-                                        showTeacher = uiState.effectiveShowHomeroom
-                                    )
-                                    if (!ok) {
-                                        onNotify("Không thể tạo ảnh chia sẻ lúc này.")
-                                    }
+                                    showExportSheet = true
                                 }
                             }
                             .testTag("timetable_share_button")
@@ -514,6 +497,33 @@ fun TimetableScreen(
         SchoolLookupSheet(
             uiState = uiState,
             onDismiss = { showLookupSheet = false },
+            onNotify = onNotify
+        )
+    }
+
+    if (showExportSheet) {
+        val shareTitle = if (uiState.effectiveShowHomeroom) {
+            val clsName = TimetableCalculator.compactClassName(
+                uiState.homeroomClass?.name ?: uiState.homeroomClassId.orEmpty()
+            )
+            "TKB Lớp $clsName"
+        } else {
+            "TKB ${uiState.currentTeacher?.name ?: "Giáo viên"}"
+        }
+        val initialScope = when (selectedSessionFilter) {
+            "morning" -> TimetableShareScope.MORNING
+            "afternoon" -> TimetableShareScope.AFTERNOON
+            else -> TimetableShareScope.FULL_DAY
+        }
+        TimetableExportSheet(
+            title = shareTitle,
+            subtitle = uiState.schoolConfig.name,
+            weekLabel = "Tuần ${uiState.selectedWeekNumber}",
+            dateRange = "${weekStart.formatDayMonth()} – ${weekEnd.formatDayMonth()}/${weekEnd.year}",
+            periods = uiState.selectedWeekPeriods,
+            showTeacher = uiState.effectiveShowHomeroom,
+            initialScope = initialScope,
+            onDismiss = { showExportSheet = false },
             onNotify = onNotify
         )
     }

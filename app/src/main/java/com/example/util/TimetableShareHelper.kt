@@ -1,5 +1,6 @@
 package com.example.util
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -8,6 +9,11 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import androidx.core.content.FileProvider
 import com.example.domain.lunar.VnDate
 import com.example.domain.model.ResolvedPeriod
@@ -15,12 +21,53 @@ import com.example.domain.model.TimetableCalculator
 import java.io.File
 import java.io.FileOutputStream
 
+enum class TimetableShareScope(
+    val key: String,
+    val label: String,
+    val shortTitle: String,
+    val fileTag: String
+) {
+    FULL_DAY(
+        key = "all",
+        label = "TKB Cả ngày",
+        shortTitle = "Cả ngày",
+        fileTag = "CaNgay"
+    ),
+    MORNING(
+        key = "morning",
+        label = "TKB Buổi sáng",
+        shortTitle = "Buổi sáng",
+        fileTag = "BuoiSang"
+    ),
+    AFTERNOON(
+        key = "afternoon",
+        label = "TKB Buổi chiều",
+        shortTitle = "Buổi chiều",
+        fileTag = "BuoiChieu"
+    );
+
+    fun filterPeriods(periods: List<ResolvedPeriod>): List<ResolvedPeriod> = when (this) {
+        FULL_DAY -> periods
+        MORNING -> periods.filter { !it.isAfternoon }
+        AFTERNOON -> periods.filter { it.isAfternoon }
+    }
+}
+
 /**
- * Renders a crisp high-resolution PNG image of a weekly timetable (morning + optional afternoon)
- * and launches the Android Share Sheet (Zalo, Messenger, Email...) via FileProvider without
- * needing any storage permissions.
+ * Renders a crisp high-resolution PNG image of a weekly timetable (Full day, Morning only,
+ * or Afternoon only), supports sharing via Android Share Sheet (FileProvider), and saving
+ * directly to the device gallery/files without needing broad storage permissions.
  */
 object TimetableShareHelper {
+
+    fun suggestedFileName(
+        weekLabel: String,
+        scope: TimetableShareScope
+    ): String {
+        val safeWeek = weekLabel.replace(Regex("[^a-zA-Z0-9]"), "")
+            .ifBlank { "TKB" }
+        return "TKB_${scope.fileTag}_${safeWeek}_${System.currentTimeMillis()}.png"
+    }
 
     fun shareWeeklyTimetableImage(
         context: Context,
@@ -29,7 +76,8 @@ object TimetableShareHelper {
         weekLabel: String,
         dateRange: String,
         periods: List<ResolvedPeriod>,
-        showTeacher: Boolean
+        showTeacher: Boolean,
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
     ): Boolean {
         return runCatching {
             val bitmap = renderWeeklyTimetableBitmap(
@@ -38,11 +86,12 @@ object TimetableShareHelper {
                 weekLabel = weekLabel,
                 dateRange = dateRange,
                 periods = periods,
-                showTeacher = showTeacher
+                showTeacher = showTeacher,
+                scope = scope
             )
 
             val dir = File(context.cacheDir, "shared_timetables").apply { mkdirs() }
-            val file = File(dir, "TKB_${System.currentTimeMillis()}.png")
+            val file = File(dir, suggestedFileName(weekLabel, scope))
             FileOutputStream(file).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
@@ -57,12 +106,12 @@ object TimetableShareHelper {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "$title - $weekLabel")
-                putExtra(Intent.EXTRA_TEXT, "$title • $weekLabel ($dateRange)")
+                putExtra(Intent.EXTRA_SUBJECT, "$title - $weekLabel (${scope.shortTitle})")
+                putExtra(Intent.EXTRA_TEXT, "$title • $weekLabel (${scope.shortTitle}) • $dateRange")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
-            val chooser = Intent.createChooser(shareIntent, "Chia sẻ ảnh Thời khóa biểu").apply {
+            val chooser = Intent.createChooser(shareIntent, "Chia sẻ ảnh ${scope.label}").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(chooser)
@@ -70,28 +119,138 @@ object TimetableShareHelper {
         }.getOrDefault(false)
     }
 
-    private fun renderWeeklyTimetableBitmap(
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun saveWeeklyTimetableToGallery(
+        context: Context,
         title: String,
         subtitle: String,
         weekLabel: String,
         dateRange: String,
         periods: List<ResolvedPeriod>,
-        showTeacher: Boolean
+        showTeacher: Boolean,
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
+    ): Boolean {
+        val resolver = context.contentResolver
+        val fileName = suggestedFileName(weekLabel, scope)
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/TKB_LeHuuLap")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+
+        val collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val itemUri = resolver.insert(collection, values) ?: return false
+
+        return runCatching {
+            val bitmap = renderWeeklyTimetableBitmap(
+                title = title,
+                subtitle = subtitle,
+                weekLabel = weekLabel,
+                dateRange = dateRange,
+                periods = periods,
+                showTeacher = showTeacher,
+                scope = scope
+            )
+            try {
+                resolver.openOutputStream(itemUri)?.use { out ->
+                    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                        error("Bitmap compress failed")
+                    }
+                } ?: error("Cannot open output stream")
+            } finally {
+                bitmap.recycle()
+            }
+
+            val clearPending = ContentValues().apply {
+                put(MediaStore.Images.Media.IS_PENDING, 0)
+            }
+            resolver.update(itemUri, clearPending, null, null)
+            true
+        }.getOrElse {
+            runCatching { resolver.delete(itemUri, null, null) }
+            false
+        }
+    }
+
+    fun writeWeeklyTimetableToUri(
+        context: Context,
+        uri: Uri,
+        title: String,
+        subtitle: String,
+        weekLabel: String,
+        dateRange: String,
+        periods: List<ResolvedPeriod>,
+        showTeacher: Boolean,
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
+    ): Boolean {
+        return runCatching {
+            val bitmap = renderWeeklyTimetableBitmap(
+                title = title,
+                subtitle = subtitle,
+                weekLabel = weekLabel,
+                dateRange = dateRange,
+                periods = periods,
+                showTeacher = showTeacher,
+                scope = scope
+            )
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                        error("Bitmap compress failed")
+                    }
+                } ?: error("Cannot open output stream")
+            } finally {
+                bitmap.recycle()
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    fun renderWeeklyTimetableBitmap(
+        title: String,
+        subtitle: String,
+        weekLabel: String,
+        dateRange: String,
+        periods: List<ResolvedPeriod>,
+        showTeacher: Boolean,
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
     ): Bitmap {
-        val morning = periods.filter { !it.isAfternoon }
-        val afternoon = periods.filter { it.isAfternoon }
-        val hasAfternoon = afternoon.isNotEmpty()
+        val scopedPeriods = scope.filterPeriods(periods)
+        val morning = scopedPeriods.filter { !it.isAfternoon }
+        val afternoon = scopedPeriods.filter { it.isAfternoon }
+
+        val drawMorning = when (scope) {
+            TimetableShareScope.MORNING -> true
+            TimetableShareScope.AFTERNOON -> false
+            TimetableShareScope.FULL_DAY -> morning.isNotEmpty() || afternoon.isEmpty()
+        }
+        val drawAfternoon = when (scope) {
+            TimetableShareScope.MORNING -> false
+            TimetableShareScope.AFTERNOON -> true
+            TimetableShareScope.FULL_DAY -> afternoon.isNotEmpty()
+        }
+
+        val morningMaxPeriod = 5
+        val afternoonMaxPeriod = (afternoon.maxOfOrNull { it.period } ?: 4).coerceIn(4, 5)
 
         val width = 1240
         val pad = 44f
         val headerHeight = 165f
-        val tableHeaderH = 54f
-        val rowH = 88f
-        val sectionTitleH = 50f
-        val morningBlockH = sectionTitleH + tableHeaderH + rowH * 5 + 24f
-        val afternoonBlockH = if (hasAfternoon) sectionTitleH + tableHeaderH + rowH * 4 + 28f else 0f
-        val footerH = 66f
-        val height = (pad + headerHeight + morningBlockH + afternoonBlockH + footerH + pad).toInt()
+        val tableTitleOffset = 46f
+        val tableHeaderH = 50f
+        val rowH = 86f
+        val tableBottomGap = 10f
+
+        val morningBlockH = if (drawMorning) {
+            tableTitleOffset + tableHeaderH + rowH * morningMaxPeriod + tableBottomGap
+        } else 0f
+        val betweenGap = if (drawMorning && drawAfternoon) 18f else 0f
+        val afternoonBlockH = if (drawAfternoon) {
+            tableTitleOffset + tableHeaderH + rowH * afternoonMaxPeriod + tableBottomGap
+        } else 0f
+        val footerH = 56f
+        val height = (pad + headerHeight + 12f + morningBlockH + betweenGap + afternoonBlockH + footerH + pad).toInt()
 
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
@@ -101,19 +260,21 @@ object TimetableShareHelper {
 
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#1E2430")
-            textSize = 42f
+            textSize = 40f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.parseColor("#475569")
-            textSize = 25f
+            textSize = 24f
         }
+        val badgeColorHex = if (scope == TimetableShareScope.AFTERNOON) "#0284C7" else "#EA580C"
+        val badgeSubHex = if (scope == TimetableShareScope.AFTERNOON) "#E0F2FE" else "#FFEDD5"
         val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#EA580C")
+            color = Color.parseColor(badgeColorHex)
         }
         val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 24f
+            textSize = 22f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
@@ -129,37 +290,39 @@ object TimetableShareHelper {
         canvas.drawRoundRect(headerRect, 28f, 28f, cardPaint)
         canvas.drawRoundRect(headerRect, 28f, 28f, borderPaint)
 
-        canvas.drawText(title, pad + 32f, pad + 62f, titlePaint)
-        canvas.drawText(subtitle, pad + 32f, pad + 104f, subPaint)
+        canvas.drawText(truncateText(title, 28), pad + 32f, pad + 62f, titlePaint)
+        canvas.drawText("$subtitle • ${scope.shortTitle}", pad + 32f, pad + 104f, subPaint)
 
         // Right pill for Week + Date range
-        val pillW = 340f
+        val pillW = 350f
         val pillRect = RectF(width - pad - pillW - 24f, pad + 26f, width - pad - 24f, pad + 114f)
         canvas.drawRoundRect(pillRect, 22f, 22f, badgePaint)
-        canvas.drawText(weekLabel, pillRect.centerX(), pillRect.top + 38f, badgeTextPaint)
+        canvas.drawText("$weekLabel • ${scope.shortTitle}", pillRect.centerX(), pillRect.top + 38f, badgeTextPaint)
         val pillSubPaint = Paint(badgeTextPaint).apply {
-            textSize = 20f
+            textSize = 19f
             typeface = Typeface.DEFAULT
-            color = Color.parseColor("#FFEDD5")
+            color = Color.parseColor(badgeSubHex)
         }
         canvas.drawText(dateRange, pillRect.centerX(), pillRect.top + 70f, pillSubPaint)
 
         var y = pad + headerHeight + 12f
-        y = drawSessionTable(
-            canvas = canvas,
-            startY = y,
-            width = width,
-            pad = pad,
-            sectionTitle = "BUỔI SÁNG",
-            accentHex = "#EA580C",
-            cellFillHex = "#FFF7ED",
-            periods = morning,
-            maxPeriod = 5,
-            showTeacher = showTeacher
-        )
+        if (drawMorning) {
+            y = drawSessionTable(
+                canvas = canvas,
+                startY = y,
+                width = width,
+                pad = pad,
+                sectionTitle = "BUỔI SÁNG",
+                accentHex = "#EA580C",
+                cellFillHex = "#FFF7ED",
+                periods = morning,
+                maxPeriod = morningMaxPeriod,
+                showTeacher = showTeacher
+            )
+        }
 
-        if (hasAfternoon) {
-            y += 18f
+        if (drawAfternoon) {
+            if (drawMorning) y += betweenGap
             y = drawSessionTable(
                 canvas = canvas,
                 startY = y,
@@ -169,7 +332,7 @@ object TimetableShareHelper {
                 accentHex = "#0284C7",
                 cellFillHex = "#F0F9FF",
                 periods = afternoon,
-                maxPeriod = 4,
+                maxPeriod = afternoonMaxPeriod,
                 showTeacher = showTeacher
             )
         }
@@ -182,7 +345,7 @@ object TimetableShareHelper {
         }
         val today = VnDate.today()
         canvas.drawText(
-            "Trường THCS Lê Hữu Lập • Xuất ngày ${today.formatDayMonth()}/${today.year} • Tổng ${periods.size} tiết",
+            "Trường THCS Lê Hữu Lập • ${scope.label} • Xuất ngày ${today.formatDayMonth()}/${today.year} • Tổng ${scopedPeriods.size} tiết",
             width / 2f,
             height - pad + 4f,
             footerPaint

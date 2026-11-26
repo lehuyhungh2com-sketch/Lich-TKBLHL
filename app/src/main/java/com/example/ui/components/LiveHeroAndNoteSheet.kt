@@ -635,6 +635,7 @@ fun LiveTimetableOnlyPreviewCard(
     cornerStyle: WidgetCornerStyle,
     fontSize: WidgetFontSize,
     showSubject: Boolean,
+    isSundayPreview: Boolean = today.isSunday,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -660,17 +661,8 @@ fun LiveTimetableOnlyPreviewCard(
     val lunar = LunarCalendar.convertSolar2Lunar(today)
     val lunarShort = "${lunar.day}/${lunar.month}${if (lunar.isLeap) "N" else ""} ÂL"
 
-    // Sample preview fallback if teacher has no classes today so Settings preview always looks informative
-    val displayPeriods = todayPeriods.ifEmpty {
-        listOf(
-            ResolvedPeriod("s1", weekNumber, today.shortDayCode, 1, "morning", "8A1", "8A1", "s", "Âm nhạc", "Nhạc", "t", teacherName, "", null, null, VnTime(7, 15), VnTime(8, 0), PeriodLiveStatus.PAST),
-            ResolvedPeriod("s2", weekNumber, today.shortDayCode, 2, "morning", "8A3", "8A3", "s", "Âm nhạc", "Nhạc", "t", teacherName, "", null, null, VnTime(8, 0), VnTime(8, 45), PeriodLiveStatus.TEACHING_NOW),
-            ResolvedPeriod("s3", weekNumber, today.shortDayCode, 3, "morning", "8A2", "8A2", "s", "Âm nhạc", "Nhạc", "t", teacherName, "", null, null, VnTime(8, 55), VnTime(9, 40), PeriodLiveStatus.NEXT_PERIOD),
-            ResolvedPeriod("s4", weekNumber, today.shortDayCode, 4, "morning", "7A3", "7A3", "s", "Âm nhạc", "Nhạc", "t", teacherName, "", null, null, VnTime(9, 40), VnTime(10, 25), PeriodLiveStatus.UPCOMING)
-        )
-    }
-    val teachingNow = displayPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.TEACHING_NOW }
-    val nextPeriod = displayPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.NEXT_PERIOD }
+    val teachingNow = if (isSundayPreview) null else todayPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.TEACHING_NOW }
+    val nextPeriod = if (isSundayPreview) null else todayPeriods.firstOrNull { it.liveStatus == PeriodLiveStatus.NEXT_PERIOD }
 
     Box(
         modifier = modifier
@@ -700,28 +692,37 @@ fun LiveTimetableOnlyPreviewCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "TKB ${today.vietnameseWeekday} · Tuần $weekNumber",
+                        text = if (isSundayPreview) {
+                            "Dự kiến Thứ Hai (Tuần $weekNumber)"
+                        } else {
+                            "TKB ${today.vietnameseWeekday} · Tuần $weekNumber"
+                        },
                         fontSize = (13f + delta).sp,
                         fontWeight = FontWeight.Bold,
                         color = accentOrange,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "${today.formatFullVietnamese()} ($lunarShort)",
                         fontSize = (10f + delta * 0.4f).sp,
                         color = secondaryText,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 if (teacherName.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = teacherName,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
-                        color = primaryText
+                        color = primaryText,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
                 }
+                Spacer(modifier = Modifier.width(6.dp))
                 Icon(
                     imageVector = Icons.Rounded.Refresh,
                     contentDescription = null,
@@ -730,93 +731,134 @@ fun LiveTimetableOnlyPreviewCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            if (!isSundayPreview && todayPeriods.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
 
-            val statusText = when {
-                teachingNow != null -> {
-                    val left = (teachingNow.endTime.totalMinutes - now.totalMinutes).coerceIn(1, 45)
-                    "● Đang dạy T${teachingNow.period} (${TimetableCalculator.compactClassName(teachingNow.className)}) · còn ${left}p"
+                val statusText = when {
+                    teachingNow != null -> {
+                        val tag = if (teachingNow.isAfternoon) "C${teachingNow.period}" else "T${teachingNow.period}"
+                        val left = (teachingNow.endTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
+                        "● Đang dạy $tag (${TimetableCalculator.compactClassName(teachingNow.className)}) · còn ${left}p"
+                    }
+                    nextPeriod != null -> {
+                        val tag = if (nextPeriod.isAfternoon) "C${nextPeriod.period}" else "T${nextPeriod.period}"
+                        val until = (nextPeriod.startTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
+                        val countdown = if (until < 60) "còn ${until}p" else nextPeriod.startTime.formatHHmm()
+                        "Tiếp: $tag · $countdown"
+                    }
+                    else -> "✓ Đã xong ${todayPeriods.size}/${todayPeriods.size} tiết"
                 }
-                nextPeriod != null -> "Tiếp: T${nextPeriod.period} · ${nextPeriod.startTime.formatHHmm()}"
-                else -> "✓ Đã xong hôm nay"
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (teachingNow != null) liveBg else tileBg)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = statusText,
-                    fontSize = (10.5f + delta * 0.4f).sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (teachingNow != null) liveAccent else accentOrange,
-                    maxLines = 1
-                )
+                val statusColor = when {
+                    teachingNow != null -> liveAccent
+                    nextPeriod != null -> accentOrange
+                    else -> mutedPastText
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (teachingNow != null) liveBg else tileBg)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = statusText,
+                        fontSize = (10.5f + delta * 0.4f).sp,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(7.dp))
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                displayPeriods.take(4).forEach { p ->
-                    val isNow = p.liveStatus == PeriodLiveStatus.TEACHING_NOW
-                    val isNext = p.liveStatus == PeriodLiveStatus.NEXT_PERIOD
-                    val isPast = p.liveStatus == PeriodLiveStatus.PAST
-                    val tag = when {
-                        isNow -> "● T${p.period}"
-                        isPast -> "✓ T${p.period}"
-                        else -> "T${p.period}"
+            if (todayPeriods.isEmpty()) {
+                Text(
+                    text = if (isSundayPreview) {
+                        "Thứ Hai tuần tới chưa có tiết dạy."
+                    } else {
+                        "Hôm nay không có tiết dạy."
+                    },
+                    fontSize = (12f + delta * 0.5f).sp,
+                    color = secondaryText,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            } else {
+                val visible = todayPeriods.take(5)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    visible.forEach { p ->
+                        val isNow = p.liveStatus == PeriodLiveStatus.TEACHING_NOW
+                        val isNext = p.liveStatus == PeriodLiveStatus.NEXT_PERIOD
+                        val isPast = p.liveStatus == PeriodLiveStatus.PAST
+                        val baseTag = if (p.isAfternoon) "C${p.period}" else "T${p.period}"
+                        val tag = when {
+                            isNow -> "● $baseTag"
+                            isPast -> "✓ $baseTag"
+                            else -> baseTag
+                        }
+                        val rowBg = when {
+                            isNow -> liveBg
+                            isNext -> nextBg
+                            else -> tileBg
+                        }
+                        val tagColor = when {
+                            isNow -> liveAccent
+                            isNext -> accentOrange
+                            isPast -> mutedPastText
+                            p.isAfternoon -> SkyBlue
+                            else -> accentOrange
+                        }
+                        val cls = TimetableCalculator.compactClassName(p.className)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(rowBg)
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = tag,
+                                fontSize = (11f + delta).sp,
+                                fontWeight = FontWeight.Bold,
+                                color = tagColor,
+                                maxLines = 1,
+                                modifier = Modifier.width(38.dp)
+                            )
+                            Text(
+                                text = if (showSubject) "$cls · ${p.subjectName}" else "Lớp $cls",
+                                fontSize = (11.5f + delta).sp,
+                                fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isPast) mutedPastText else primaryText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isNow) "${p.startTime.formatHHmm()}–${p.endTime.formatHHmm()}" else p.startTime.formatHHmm(),
+                                fontSize = (10f + delta * 0.4f).sp,
+                                fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Normal,
+                                color = when {
+                                    isNow -> liveAccent
+                                    isNext -> accentOrange
+                                    isPast -> mutedPastText
+                                    else -> secondaryText
+                                },
+                                maxLines = 1
+                            )
+                        }
                     }
-                    val rowBg = when {
-                        isNow -> liveBg
-                        isNext -> nextBg
-                        else -> tileBg
-                    }
-                    val tagColor = when {
-                        isNow -> liveAccent
-                        isNext -> accentOrange
-                        isPast -> mutedPastText
-                        p.isAfternoon -> SkyBlue
-                        else -> accentOrange
-                    }
-                    val cls = TimetableCalculator.compactClassName(p.className)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(rowBg)
-                            .padding(horizontal = 8.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = tag,
-                            fontSize = (11f + delta).sp,
-                            fontWeight = FontWeight.Bold,
-                            color = tagColor,
-                            modifier = Modifier.width(36.dp)
-                        )
-                        Text(
-                            text = if (showSubject) "$cls · ${p.subjectName}" else "Lớp $cls",
-                            fontSize = (11.5f + delta).sp,
-                            fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isPast) mutedPastText else primaryText,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = if (isNow) "${p.startTime.formatHHmm()}–${p.endTime.formatHHmm()}" else p.startTime.formatHHmm(),
-                            fontSize = (10f + delta * 0.4f).sp,
-                            fontWeight = if (isNow || isNext) FontWeight.Bold else FontWeight.Normal,
-                            color = when {
-                                isNow -> liveAccent
-                                isNext -> accentOrange
-                                isPast -> mutedPastText
-                                else -> secondaryText
-                            }
-                        )
-                    }
+                }
+                if (todayPeriods.size > visible.size) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "+${todayPeriods.size - visible.size} tiết nữa trong ngày...",
+                        fontSize = 10.sp,
+                        color = secondaryText,
+                        maxLines = 1
+                    )
                 }
             }
         }

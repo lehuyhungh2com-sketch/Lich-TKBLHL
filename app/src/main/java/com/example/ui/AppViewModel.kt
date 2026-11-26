@@ -60,6 +60,7 @@ data class MainUiState(
     val isSundayPreview: Boolean = VnDate.today().isSunday,
     val todayMorningPeriods: List<ResolvedPeriod> = emptyList(),
     val todayAfternoonPeriods: List<ResolvedPeriod> = emptyList(),
+    val teacherTodayPeriods: List<ResolvedPeriod> = emptyList(),
     val selectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val allSelectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val currentWeekPeriods: List<ResolvedPeriod> = emptyList(),
@@ -265,6 +266,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val todayPeriods = currentWeekResolved.filter { it.day == targetDayCode }
+        val teacherTodayPeriods = if (!showHomeroom) {
+            todayPeriods
+        } else if (currentTeacher != null) {
+            TimetableCalculator.resolveWeekPeriods(
+                weekNumber = currentWeek,
+                rawSlots = currentWeekSlots,
+                schoolConfig = catalog.config,
+                weekInfo = currentWeekInfo,
+                deletedSlotKeys = catalog.deletedKeys,
+                teachers = catalog.teachers,
+                classes = catalog.classes,
+                subjects = catalog.subjects,
+                assignments = catalog.assignments,
+                filterTeacherId = currentTeacher.id,
+                filterClassId = null,
+                todayDate = if (isSundayPreview) null else today,
+                nowTime = if (isSundayPreview) null else now
+            ).filter { it.day == targetDayCode }
+        } else {
+            emptyList()
+        }
 
         MainUiState(
             isInitialized = true,
@@ -286,6 +308,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             isSundayPreview = isSundayPreview,
             todayMorningPeriods = todayPeriods.filter { !it.isAfternoon },
             todayAfternoonPeriods = todayPeriods.filter { it.isAfternoon },
+            teacherTodayPeriods = teacherTodayPeriods,
             selectedWeekPeriods = selectedWeekResolved,
             allSelectedWeekPeriods = allSelectedWeekResolved,
             currentWeekPeriods = currentWeekResolved,

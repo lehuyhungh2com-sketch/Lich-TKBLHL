@@ -131,4 +131,212 @@ class UpgradeFeaturesUiTest {
         composeRule.onNodeWithText("Tra cứu Lớp / GV").assertIsDisplayed()
         composeRule.onNodeWithText("Chia sẻ ảnh TKB").assertIsDisplayed()
     }
+
+    @Test
+    fun settingsWidgetPreview_showsRealTeacherScheduleWithoutHardcodedMusic() {
+        val stateEmptyToday = MainUiState(
+            isInitialized = true,
+            currentTeacher = Teacher(
+                id = "gv-hung",
+                name = "Lê Huy Hùng",
+                shortName = "Hùng",
+                email = "lehuyhung.h2com@gmail.com",
+                mainSubject = "Tin học"
+            ),
+            todayDate = com.example.domain.lunar.VnDate(2026, 11, 26),
+            nowTime = com.example.domain.lunar.VnTime(14, 24),
+            isSundayPreview = false,
+            teacherTodayPeriods = emptyList()
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                SettingsScreen(
+                    uiState = stateEmptyToday,
+                    onSyncNow = {},
+                    onUpdateAppTheme = {},
+                    onUpdateAccentPalette = {},
+                    onUpdateFontScale = {},
+                    onUpdateDensityMode = {},
+                    onUpdateDailyReminder = { _, _, _ -> },
+                    onTogglePeriodReminder = {},
+                    onUpdatePeriodLeadMinutes = {},
+                    onSendTestNotification = {},
+                    onToggleGpsLocation = {},
+                    onUpdateWidgetAppearance = { _, _, _, _, _, _ -> },
+                    onRefreshWidgetsNow = {},
+                    onLogout = {}
+                )
+            }
+        }
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("preview_widget_tkb"))
+        composeRule.onNodeWithText("Hôm nay không có tiết dạy.").assertIsDisplayed()
+        composeRule.onNodeWithText("8A1 · Âm nhạc", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun settingsWidgetPreview_ignoresHomeroomModeAndShowsTeachersActualPeriods() {
+        val teacherPeriod = com.example.domain.model.ResolvedPeriod(
+            slotId = "s1",
+            week = 12,
+            day = "T5",
+            period = 2,
+            session = "morning",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-tin",
+            subjectName = "Tin học",
+            subjectShort = "Tin",
+            teacherId = "gv-hung",
+            teacherShortName = "Hùng",
+            room = "P.Tin",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(8, 0),
+            endTime = com.example.domain.lunar.VnTime(8, 45),
+            liveStatus = com.example.domain.model.PeriodLiveStatus.UPCOMING
+        )
+        val homeroomOtherPeriod = teacherPeriod.copy(
+            slotId = "s2",
+            classId = "8A1",
+            className = "8A1",
+            subjectId = "sub-van",
+            subjectName = "Ngữ văn",
+            teacherId = "gv-other"
+        )
+        val stateWithHomeroom = MainUiState(
+            isInitialized = true,
+            currentTeacher = Teacher(
+                id = "gv-hung",
+                name = "Lê Huy Hùng",
+                shortName = "Hùng",
+                email = "lehuyhung.h2com@gmail.com",
+                homeroomClass = "8A1"
+            ),
+            preferences = UserPreferencesState(
+                loggedInTeacherId = "gv-hung",
+                showHomeroomClass = true
+            ),
+            todayDate = com.example.domain.lunar.VnDate(2026, 11, 26),
+            nowTime = com.example.domain.lunar.VnTime(7, 30),
+            isSundayPreview = false,
+            todayMorningPeriods = listOf(homeroomOtherPeriod),
+            teacherTodayPeriods = listOf(teacherPeriod)
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                SettingsScreen(
+                    uiState = stateWithHomeroom,
+                    onSyncNow = {},
+                    onUpdateAppTheme = {},
+                    onUpdateAccentPalette = {},
+                    onUpdateFontScale = {},
+                    onUpdateDensityMode = {},
+                    onUpdateDailyReminder = { _, _, _ -> },
+                    onTogglePeriodReminder = {},
+                    onUpdatePeriodLeadMinutes = {},
+                    onSendTestNotification = {},
+                    onToggleGpsLocation = {},
+                    onUpdateWidgetAppearance = { _, _, _, _, _, _ -> },
+                    onRefreshWidgetsNow = {},
+                    onLogout = {}
+                )
+            }
+        }
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("preview_widget_tkb"))
+        composeRule.onNodeWithText("6A1 · Tin học").assertIsDisplayed()
+        composeRule.onNodeWithText("8A1 · Ngữ văn").assertDoesNotExist()
+    }
+
+    @Test
+    fun timetableScreen_shareButtonOpensExportOptionsAndRendersScopedBitmaps() {
+        val morning = com.example.domain.model.ResolvedPeriod(
+            slotId = "m1",
+            week = 12,
+            day = "T2",
+            period = 1,
+            session = "morning",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-tin",
+            subjectName = "Tin học",
+            subjectShort = "Tin",
+            teacherId = "gv-hung",
+            teacherShortName = "Hùng",
+            room = "P.Tin",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(7, 15),
+            endTime = com.example.domain.lunar.VnTime(8, 0)
+        )
+        val afternoon = morning.copy(
+            slotId = "a1",
+            day = "T4",
+            period = 2,
+            session = "afternoon",
+            classId = "9A3",
+            className = "9A3",
+            startTime = com.example.domain.lunar.VnTime(14, 45),
+            endTime = com.example.domain.lunar.VnTime(15, 30)
+        )
+        val periods = listOf(morning, afternoon)
+
+        val state = sampleUiState().copy(selectedWeekPeriods = periods)
+        composeRule.setContent {
+            LhlTimetableTheme {
+                TimetableScreen(
+                    uiState = state,
+                    onSelectWeek = {},
+                    onToggleHomeroom = {},
+                    onSyncNow = {},
+                    onSaveLessonNote = { _, _ -> },
+                    onDeleteLessonNote = {},
+                    onNotify = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("timetable_share_button").performClick()
+        composeRule.onNodeWithTag("export_scope_all").assertIsDisplayed()
+        composeRule.onNodeWithTag("export_scope_morning").assertIsDisplayed()
+        composeRule.onNodeWithTag("export_scope_afternoon").assertIsDisplayed()
+        composeRule.onNodeWithTag("export_download_tkb_button").assertIsDisplayed()
+        composeRule.onNodeWithTag("export_share_tkb_button").assertIsDisplayed()
+
+        val fullBmp = com.example.util.TimetableShareHelper.renderWeeklyTimetableBitmap(
+            title = "TKB Lê Huy Hùng",
+            subtitle = "Trường THCS Lê Hữu Lập",
+            weekLabel = "Tuần 12",
+            dateRange = "23/11 – 29/11/2026",
+            periods = periods,
+            showTeacher = false,
+            scope = com.example.util.TimetableShareScope.FULL_DAY
+        )
+        val morningBmp = com.example.util.TimetableShareHelper.renderWeeklyTimetableBitmap(
+            title = "TKB Lê Huy Hùng",
+            subtitle = "Trường THCS Lê Hữu Lập",
+            weekLabel = "Tuần 12",
+            dateRange = "23/11 – 29/11/2026",
+            periods = periods,
+            showTeacher = false,
+            scope = com.example.util.TimetableShareScope.MORNING
+        )
+        val afternoonBmp = com.example.util.TimetableShareHelper.renderWeeklyTimetableBitmap(
+            title = "TKB Lê Huy Hùng",
+            subtitle = "Trường THCS Lê Hữu Lập",
+            weekLabel = "Tuần 12",
+            dateRange = "23/11 – 29/11/2026",
+            periods = periods,
+            showTeacher = false,
+            scope = com.example.util.TimetableShareScope.AFTERNOON
+        )
+        org.junit.Assert.assertTrue(fullBmp.height > morningBmp.height)
+        org.junit.Assert.assertTrue(morningBmp.height > afternoonBmp.height)
+        fullBmp.recycle()
+        morningBmp.recycle()
+        afternoonBmp.recycle()
+    }
 }

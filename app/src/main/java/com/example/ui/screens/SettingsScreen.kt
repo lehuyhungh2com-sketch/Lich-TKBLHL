@@ -157,6 +157,11 @@ fun SettingsScreen(
     }
 
     val todayAllPeriods = uiState.todayMorningPeriods + uiState.todayAfternoonPeriods
+    val widgetTodayPeriods = if (uiState.effectiveShowHomeroom) {
+        uiState.teacherTodayPeriods
+    } else {
+        uiState.teacherTodayPeriods.ifEmpty { todayAllPeriods }
+    }
     val availablePalettes = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AppAccentPalette.entries
@@ -682,21 +687,22 @@ fun SettingsScreen(
                         0 -> LiveTimetableOnlyPreviewCard(
                             today = uiState.todayDate,
                             now = uiState.nowTime,
-                            teacherName = uiState.currentTeacher?.shortName ?: "Giáo viên",
-                            todayPeriods = todayAllPeriods,
+                            teacherName = uiState.currentTeacher?.displayShortName ?: "Giáo viên",
+                            todayPeriods = widgetTodayPeriods,
                             weekNumber = uiState.currentWeekNumber,
                             transparentMode = liveIsTransparent,
                             opacity = liveOpacity,
                             textTheme = prefs.widgetTextTheme,
                             cornerStyle = prefs.widgetCornerStyle,
                             fontSize = prefs.widgetFontSize,
-                            showSubject = prefs.widgetShowSubject
+                            showSubject = prefs.widgetShowSubject,
+                            isSundayPreview = uiState.isSundayPreview
                         )
                         1 -> LiveWidgetPreviewCard(
                             today = uiState.todayDate,
                             now = uiState.nowTime,
                             weather = uiState.weather,
-                            todayPeriods = todayAllPeriods,
+                            todayPeriods = widgetTodayPeriods,
                             weekNumber = uiState.currentWeekNumber,
                             transparentMode = liveIsTransparent,
                             opacity = liveOpacity,
@@ -708,7 +714,7 @@ fun SettingsScreen(
                         else -> LiveWeatherTimetablePreviewCard(
                             today = uiState.todayDate,
                             weather = uiState.weather,
-                            todayPeriods = todayAllPeriods,
+                            todayPeriods = widgetTodayPeriods,
                             weekNumber = uiState.currentWeekNumber,
                             transparentMode = liveIsTransparent,
                             opacity = liveOpacity,
