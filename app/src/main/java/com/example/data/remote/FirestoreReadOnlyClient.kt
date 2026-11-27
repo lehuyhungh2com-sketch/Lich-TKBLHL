@@ -205,6 +205,8 @@ class FirestoreReadOnlyClient(private val context: Context) {
         return snap.documents.map { doc ->
             val rawSession = doc.getString("session")
             val normalizedSession = if (rawSession == "afternoon") "afternoon" else "morning"
+            val rawActual = (doc.get("actualPeriod") as? Number)?.toInt()
+                ?: (doc.get("actualPeriod") as? String)?.toIntOrNull()
             TimetableSlot(
                 id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id,
                 week = (doc.get("week") as? Number)?.toInt() ?: weekNumber,
@@ -216,7 +218,8 @@ class FirestoreReadOnlyClient(private val context: Context) {
                 room = doc.getString("room")?.takeIf { it.isNotBlank() },
                 note = doc.getString("note")?.takeIf { it.isNotBlank() },
                 customLabel = doc.getString("customLabel")?.takeIf { it.isNotBlank() },
-                session = normalizedSession
+                session = normalizedSession,
+                actualPeriod = rawActual?.takeIf { it in 1..5 }
             )
         }
     }

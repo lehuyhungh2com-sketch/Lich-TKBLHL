@@ -59,6 +59,42 @@ object TimetableCalculator {
     }
 
     /**
+     * Exact actual teaching period resolution matching the Web timetable logic:
+     * 1. Explicit actualPeriod (1..5) takes highest priority.
+     * 2. Monday morning (T2): assembly/HĐTN is period 1; row periods 1..4 shift down +1 (1->2..4->5).
+     * 3. Saturday morning (T7): SHL/HĐTN at period 5 stays period 5.
+     * 4. Other days (T3..T6) or afternoon sessions keep slot.period.
+     */
+    fun getSlotActualPeriod(slot: TimetableSlot): Int {
+        val explicit = slot.actualPeriod
+        if (explicit != null && explicit in 1..5) {
+            return explicit
+        }
+
+        val isAfternoon = slot.session == "afternoon"
+        val subIdLower = slot.subjectId.lowercase()
+
+        if (slot.day == "T2" && !isAfternoon) {
+            val isAssembly = subIdLower.contains("hdtn") ||
+                subIdLower.contains("chao-co") ||
+                subIdLower.contains("shdc") ||
+                subIdLower.contains("trai-nghiem")
+            if (isAssembly) return 1
+            if (slot.period in 1..4) return slot.period + 1
+        }
+
+        if (slot.day == "T7" && !isAfternoon) {
+            val isClassMeeting = subIdLower.contains("shl") ||
+                subIdLower.contains("sinh-hoat") ||
+                subIdLower.contains("hdtn") ||
+                subIdLower.contains("trai-nghiem")
+            if (isClassMeeting && slot.period == 5) return 5
+        }
+
+        return slot.period
+    }
+
+    /**
      * Exact period start & end time rules:
      * - Morning Monday (T2): recess after Period 3.
      * - Morning T3..T7 & Afternoon (all days): recess after Period 2.
@@ -188,12 +224,13 @@ object TimetableCalculator {
                 if (effectiveTeacherId != filterTeacherId) return@mapNotNull null
             }
 
+            val effectivePeriod = getSlotActualPeriod(slot)
             val subject = subjectsById[slot.subjectId]
             val schoolClass = classesById[slot.classId]
             val teacher = teachersById[effectiveTeacherId]
             val (start, end) = calculatePeriodTimeRange(
                 day = slot.day,
-                period = slot.period,
+                period = effectivePeriod,
                 session = session,
                 config = schoolConfig.timeConfig
             )
@@ -212,7 +249,7 @@ object TimetableCalculator {
                 slotId = slot.id,
                 week = slot.week,
                 day = slot.day,
-                period = slot.period,
+                period = effectivePeriod,
                 session = session,
                 classId = slot.classId,
                 className = schoolClass?.name?.ifBlank { slot.classId } ?: slot.classId,

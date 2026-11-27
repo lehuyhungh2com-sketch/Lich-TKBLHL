@@ -269,4 +269,108 @@ class LhlBusinessLogicTest {
         assertTrue(TimetableCalculator.eventMatchesDate(lunarRecurring, solar, lunar))
         assertFalse(TimetableCalculator.eventMatchesDate(lunarOtherDay, solar, lunar))
     }
+
+    @Test
+    fun getSlotActualPeriod_matchesWebRulesForExplicitMondayAndSaturday() {
+        // 1. Explicit actualPeriod (1..5) overrides row period
+        assertEquals(
+            3,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s1", 12, "9A1", "T2", 5, "sub-tin", "gv-hung", session = "morning", actualPeriod = 3)
+            )
+        )
+        // 2. Monday morning without actualPeriod: Chào cờ / HĐTN -> Period 1; other rows 1..4 -> +1
+        assertEquals(
+            1,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s2", 12, "9A1", "T2", 1, "sub-chao-co", "gv1", session = "morning", actualPeriod = null)
+            )
+        )
+        assertEquals(
+            1,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s3", 12, "9A1", "T2", 2, "sub-hdtn", "gv1", session = "morning", actualPeriod = null)
+            )
+        )
+        assertEquals(
+            4,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s4", 12, "9A1", "T2", 3, "sub-toan", "gv1", session = "morning", actualPeriod = null)
+            )
+        )
+        assertEquals(
+            5,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s5", 12, "8A1", "T2", 5, "sub-tin", "gv-hung", session = "morning", actualPeriod = null)
+            )
+        )
+        // 3. Saturday morning SHL/HĐTN at period 5 -> Period 5
+        assertEquals(
+            5,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s6", 12, "7A1", "T7", 5, "sub-shl", "gv1", session = "morning", actualPeriod = null)
+            )
+        )
+        // 4. Other days (T3..T6) or afternoon sessions keep raw period when actualPeriod is null
+        assertEquals(
+            2,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s7", 12, "6A1", "T3", 2, "sub-tin", "gv1", session = "morning", actualPeriod = null)
+            )
+        )
+        assertEquals(
+            1,
+            TimetableCalculator.getSlotActualPeriod(
+                TimetableSlot("s8", 12, "6A1", "T2", 1, "sub-tin", "gv1", session = "afternoon", actualPeriod = null)
+            )
+        )
+    }
+
+    @Test
+    fun resolveWeekPeriods_mondayActualPeriod_resolves9A1AtT3Before8A1AtT5() {
+        val teachers = listOf(Teacher(id = "gv-hung", name = "Lê Huy Hùng", shortName = "Hùng", email = "h@lhl.vn"))
+        val classes = listOf(
+            SchoolClass(id = "8A1", name = "8A1", grade = 8, room = "P201"),
+            SchoolClass(id = "9A1", name = "9A1", grade = 9, room = "P301")
+        )
+        val subjects = listOf(Subject(id = "sub-tin", name = "Tin học", code = "Tin"))
+        val slots = listOf(
+            TimetableSlot("slot-8a1", 12, "8A1", "T2", 5, "sub-tin", "gv-hung", session = "morning", actualPeriod = null),
+            TimetableSlot("slot-9a1", 12, "9A1", "T2", 5, "sub-tin", "gv-hung", session = "morning", actualPeriod = 3)
+        )
+
+        val resolved = TimetableCalculator.resolveWeekPeriods(
+            weekNumber = 12,
+            rawSlots = slots,
+            schoolConfig = SchoolConfig(),
+            weekInfo = WeekInfo(12, "2026-11-23", "2026-11-29", "Tuần 12", isLocked = false),
+            deletedSlotKeys = emptySet(),
+            teachers = teachers,
+            classes = classes,
+            subjects = subjects,
+            assignments = emptyList(),
+            filterTeacherId = "gv-hung",
+            todayDate = VnDate(2026, 11, 23), // Monday (T2)
+            nowTime = VnTime(9, 0)            // During Monday T3 (08:45 - 09:30)
+        )
+
+        assertEquals(2, resolved.size)
+        // First period must be 9A1 at T3 (effectivePeriod = 3)
+        assertEquals("9A1", resolved[0].classId)
+        assertEquals(3, resolved[0].period)
+        assertEquals("08:45 – 09:30", resolved[0].timeRangeText)
+        assertEquals(PeriodLiveStatus.TEACHING_NOW, resolved[0].liveStatus)
+
+        // Second period must be 8A1 at T5 (effectivePeriod = 5)
+        assertEquals("8A1", resolved[1].classId)
+        assertEquals(5, resolved[1].period)
+        assertEquals("10:25 – 11:10", resolved[1].timeRangeText)
+        assertEquals(PeriodLiveStatus.NEXT_PERIOD, resolved[1].liveStatus)
+
+        val compactLine = TimetableCalculator.formatCompactSessionLine("Sáng", resolved)
+        assertEquals("Sáng: T3 9A1 (Tin học) · T5 8A1 (Tin học)", compactLine)
+
+        val notifSummary = TimetableCalculator.formatNotificationSummary("Thứ Hai", resolved, emptyList())
+        assertTrue(notifSummary.contains("T3 9A1 (08:45 - Tin học), T5 8A1 (10:25 - Tin học)"))
+    }
 }

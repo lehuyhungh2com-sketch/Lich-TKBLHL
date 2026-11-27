@@ -90,7 +90,8 @@ data class TimetableSlot(
     val room: String? = null,
     val note: String? = null,
     val customLabel: String? = null,
-    val session: String = "morning" // "morning" | "afternoon"
+    val session: String = "morning", // "morning" | "afternoon"
+    val actualPeriod: Int? = null
 ) {
     val isAfternoon: Boolean get() = session == "afternoon"
 }

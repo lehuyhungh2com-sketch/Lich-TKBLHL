@@ -241,7 +241,8 @@ data class TimetableSlotEntity(
     val room: String?,
     val note: String?,
     val customLabel: String?,
-    val session: String
+    val session: String,
+    val actualPeriod: Int? = null
 ) {
     fun toDomain() = TimetableSlot(
         id = id,
@@ -254,7 +255,8 @@ data class TimetableSlotEntity(
         room = room,
         note = note,
         customLabel = customLabel,
-        session = session
+        session = session,
+        actualPeriod = actualPeriod
     )
 }
 
@@ -269,7 +271,8 @@ fun TimetableSlot.toEntity() = TimetableSlotEntity(
     room = room,
     note = note,
     customLabel = customLabel,
-    session = session
+    session = session,
+    actualPeriod = actualPeriod
 )
 
 @Entity(tableName = "weeks_info")
