@@ -5,9 +5,11 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import com.example.data.local.AppAccentPalette
 import com.example.data.local.AppDensityMode
@@ -535,5 +537,144 @@ class UpgradeFeaturesUiTest {
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("calendar_add_event_button"))
         composeRule.onNodeWithTag("calendar_add_event_button").performClick()
         composeRule.onNodeWithTag("calendar_event_title_input").assertIsDisplayed()
+    }
+
+    @Test
+    fun timetableMatrix_renders4WeekAfternoonCycleAndHidesClubTeacher() {
+        val morningSlot = com.example.domain.model.ResolvedPeriod(
+            slotId = "m1",
+            week = 12,
+            day = "T2",
+            period = 1,
+            session = "morning",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-toan",
+            subjectName = "Toán",
+            subjectShort = "Toán",
+            teacherId = "t1",
+            teacherShortName = "Dũng",
+            room = "P101",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(7, 15),
+            endTime = com.example.domain.lunar.VnTime(8, 0)
+        )
+        val clubW9 = com.example.domain.model.ResolvedPeriod(
+            slotId = "c_w9",
+            week = 9,
+            day = "T3",
+            period = 3,
+            session = "afternoon",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-clb",
+            subjectName = "Sinh hoạt CLB",
+            subjectShort = "CLB",
+            teacherId = "t2",
+            teacherShortName = "ẨnTênGV",
+            room = "P101",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(15, 40),
+            endTime = com.example.domain.lunar.VnTime(16, 25),
+            hideAfternoonTeacher = true
+        )
+        val tinW12 = clubW9.copy(
+            slotId = "c_w12",
+            week = 12,
+            day = "T4",
+            subjectId = "sub-tin",
+            subjectName = "Tin học",
+            subjectShort = "Tin",
+            teacherId = "t1",
+            teacherShortName = "Hùng",
+            hideAfternoonTeacher = false
+        )
+
+        val state = sampleUiState().copy(
+            preferences = sampleUiState().preferences.copy(showHomeroomClass = true),
+            homeroomClass = com.example.domain.model.SchoolClass(id = "6A1", name = "6A1", grade = 6),
+            selectedWeekNumber = 12,
+            selectedCycle = com.example.domain.model.TimetableCalculator.getAfternoonMonthCycle(12),
+            selectedWeekPeriods = listOf(morningSlot, tinW12),
+            selectedCycleAfternoonPeriods = listOf(clubW9, tinW12)
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                TimetableScreen(
+                    uiState = state,
+                    onSelectWeek = {},
+                    onToggleHomeroom = {},
+                    onSyncNow = {},
+                    onSaveLessonNote = { _, _ -> },
+                    onDeleteLessonNote = {},
+                    onNotify = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("timetable_mode_matrix").performClick()
+        composeRule.onNodeWithTag("afternoon_month_matrix_card").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("BUỔI CHIỀU — THÁNG 11 (Tuần 9, 10, 11, 12)").assertIsDisplayed()
+        composeRule.onNodeWithText("Tuần 9").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithText("Tuần 12").onLast().performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Sinh hoạt CLB").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("ẨnTênGV").assertDoesNotExist()
+        composeRule.onNodeWithText("Hùng").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun swapLookupSheet_usesUnifiedScrollableListWithCompactSummaryAndSuggestions() {
+        val myPeriod = com.example.domain.model.ResolvedPeriod(
+            slotId = "s1",
+            week = 12,
+            day = "T2",
+            period = 1,
+            session = "morning",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-tin",
+            subjectName = "Tin học",
+            subjectShort = "Tin",
+            teacherId = "t1",
+            teacherShortName = "Hoa",
+            room = "P101",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(7, 15),
+            endTime = com.example.domain.lunar.VnTime(8, 0)
+        )
+        val t2 = Teacher(id = "t2", name = "Chung Minh Cường", shortName = "Cường", email = "c@lhl.vn", department = "Nghệ thuật", mainSubject = "Mỹ thuật")
+        val t3 = Teacher(id = "t3", name = "Lê Thị Hoa", shortName = "Hoa", email = "hoa2@lhl.vn", department = "Tổ KHXH", mainSubject = "Ngữ văn")
+        val t4 = Teacher(id = "t4", name = "Phạm Văn Bắc", shortName = "Bắc", email = "bac@lhl.vn", department = "Tổ KHXH", mainSubject = "GDTC")
+
+        val state = sampleUiState().copy(
+            allTeachers = listOf(sampleUiState().currentTeacher!!, t2, t3, t4),
+            selectedWeekPeriods = listOf(myPeriod),
+            allSelectedWeekPeriods = listOf(myPeriod)
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                TimetableScreen(
+                    uiState = state,
+                    onSelectWeek = {},
+                    onToggleHomeroom = {},
+                    onSyncNow = {},
+                    onSaveLessonNote = { _, _ -> },
+                    onDeleteLessonNote = {},
+                    onNotify = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("timetable_swap_button").performClick()
+        composeRule.onNodeWithTag("swap_unified_list").assertIsDisplayed()
+        composeRule.onNodeWithTag("swap_selected_summary").assertIsDisplayed()
+        composeRule.onNodeWithTag("swap_suggestion_t2").assertIsDisplayed()
+        composeRule.onNodeWithTag("swap_suggestion_t3").assertIsDisplayed()
+        composeRule.onNodeWithTag("swap_suggestion_t4").assertIsDisplayed()
     }
 }

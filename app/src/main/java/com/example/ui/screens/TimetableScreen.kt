@@ -77,10 +77,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.domain.lunar.VnDate
+import com.example.domain.model.AfternoonMonthCycle
 import com.example.domain.model.PeriodLiveStatus
 import com.example.domain.model.ResolvedPeriod
+import com.example.domain.model.SchoolConfig
 import com.example.domain.model.TimeConfig
 import com.example.domain.model.TimetableCalculator
+import com.example.domain.model.WeekInfo
 import com.example.ui.MainUiState
 import com.example.ui.components.HomeroomModeToggle
 import com.example.ui.components.LessonNoteEditorSheet
@@ -480,7 +483,7 @@ fun TimetableScreen(
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(14.dp))
                                 .clickable {
-                                    if (uiState.selectedWeekPeriods.isEmpty()) {
+                                    if (uiState.selectedWeekPeriods.isEmpty() && uiState.selectedCycleAfternoonPeriods.isEmpty()) {
                                         onNotify("Tuần ${uiState.selectedWeekNumber} chưa có tiết nào để xuất ảnh.")
                                     } else {
                                         showExportSheet = true
@@ -699,6 +702,11 @@ fun TimetableScreen(
                     item {
                         TimetableMatrixSection(
                             periods = uiState.selectedWeekPeriods,
+                            afternoonCycle = uiState.selectedCycle,
+                            afternoonCyclePeriods = uiState.selectedCycleAfternoonPeriods,
+                            selectedWeekNumber = uiState.selectedWeekNumber,
+                            schoolConfig = uiState.schoolConfig,
+                            weeks = uiState.weeks,
                             showTeacher = uiState.effectiveShowHomeroom,
                             todayCode = todayCodeInWeek,
                             showMorning = selectedSessionFilter != "afternoon",
@@ -835,6 +843,9 @@ fun TimetableScreen(
             "afternoon" -> TimetableShareScope.AFTERNOON
             else -> TimetableShareScope.FULL_DAY
         }
+        val effectiveCycleAfternoon = uiState.selectedCycleAfternoonPeriods.ifEmpty {
+            uiState.selectedWeekPeriods.filter { it.isAfternoon }
+        }
         TimetableExportSheet(
             title = shareTitle,
             subtitle = uiState.schoolConfig.name,
@@ -843,6 +854,10 @@ fun TimetableScreen(
             periods = uiState.selectedWeekPeriods,
             showTeacher = uiState.effectiveShowHomeroom,
             initialScope = initialScope,
+            selectedWeekNumber = uiState.selectedWeekNumber,
+            schoolConfig = uiState.schoolConfig,
+            weeks = uiState.weeks,
+            afternoonCyclePeriods = effectiveCycleAfternoon,
             onDismiss = { showExportSheet = false },
             onNotify = onNotify
         )
@@ -1526,7 +1541,7 @@ private fun SingleDaySlotRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (showTeacherName && period.teacherShortName.isNotBlank()) {
+                    if (showTeacherName && !period.hideAfternoonTeacher && period.teacherShortName.isNotBlank()) {
                         Text(
                             text = "GV: ${period.teacherShortName}",
                             style = MaterialTheme.typography.bodySmall,
@@ -1597,6 +1612,11 @@ private fun SingleDaySlotRow(
 @Composable
 private fun TimetableMatrixSection(
     periods: List<ResolvedPeriod>,
+    afternoonCycle: AfternoonMonthCycle,
+    afternoonCyclePeriods: List<ResolvedPeriod>,
+    selectedWeekNumber: Int,
+    schoolConfig: SchoolConfig,
+    weeks: List<WeekInfo>,
     showTeacher: Boolean,
     todayCode: String?,
     showMorning: Boolean,
@@ -1617,17 +1637,265 @@ private fun TimetableMatrixSection(
             )
         }
         if (showAfternoon) {
-            val afternoonPeriods = periods.filter { it.isAfternoon }
-            if (afternoonPeriods.isNotEmpty() || !showMorning) {
-                MatrixCard(
-                    title = "Bảng TKB Buổi Chiều (HSG / CLB)",
+            val effectiveAfternoon = afternoonCyclePeriods.ifEmpty {
+                periods.filter { it.isAfternoon }
+            }
+            if (effectiveAfternoon.isNotEmpty() || !showMorning) {
+                AfternoonMonthMatrixCard(
+                    cycle = afternoonCycle,
+                    selectedWeekNumber = selectedWeekNumber,
+                    schoolConfig = schoolConfig,
+                    weeks = weeks,
                     accentColor = SkyBlue,
-                    periods = afternoonPeriods,
+                    periods = effectiveAfternoon,
                     showTeacher = showTeacher,
                     todayCode = todayCode,
                     personalNoteLookup = personalNoteLookup,
                     onPeriodClick = onPeriodClick
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AfternoonMonthMatrixCard(
+    cycle: AfternoonMonthCycle,
+    selectedWeekNumber: Int,
+    schoolConfig: SchoolConfig,
+    weeks: List<WeekInfo>,
+    accentColor: Color,
+    periods: List<ResolvedPeriod>,
+    showTeacher: Boolean,
+    todayCode: String?,
+    personalNoteLookup: (ResolvedPeriod) -> String?,
+    onPeriodClick: (ResolvedPeriod) -> Unit
+) {
+    val days = TimetableCalculator.SCHOOL_DAYS
+    val scrollState = rememberScrollState()
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("afternoon_month_matrix_card")
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = cycle.sectionTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = accentColor
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Column(modifier = Modifier.horizontalScroll(scrollState)) {
+                // Header Row
+                Row {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .width(86.dp)
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Tuần",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    days.forEach { d ->
+                        val isToday = d == todayCode
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .width(86.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isToday) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = d,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isToday) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                // 4 week rows in the monthly cycle
+                cycle.weeks.forEach { wNum ->
+                    val isSelectedWeek = wNum == selectedWeekNumber
+                    val (ws, _) = TimetableCalculator.getWeekDateRange(wNum, schoolConfig, weeks)
+                    val shortRange = "${ws.formatDayMonth()}–${ws.plusDays(5).formatDayMonth()}"
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(vertical = 3.dp)
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelectedWeek) accentColor.copy(alpha = 0.14f) else Color.Transparent,
+                            border = if (isSelectedWeek) BorderStroke(1.dp, accentColor.copy(alpha = 0.45f)) else null,
+                            modifier = Modifier
+                                .width(86.dp)
+                                .fillMaxHeight()
+                                .padding(end = 4.dp)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Tuần $wNum",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = shortRange,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        days.forEach { d ->
+                            val matches = periods.filter { it.week == wNum && it.day == d }
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .width(86.dp)
+                                    .fillMaxHeight()
+                                    .heightIn(min = 52.dp)
+                                    .padding(horizontal = 2.dp)
+                            ) {
+                                if (matches.isEmpty()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "–",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        matches.forEach { match ->
+                                            val isNow = match.liveStatus == PeriodLiveStatus.TEACHING_NOW
+                                            val isNext = match.liveStatus == PeriodLiveStatus.NEXT_PERIOD
+                                            val isChanged = match.isChanged
+                                            val hasNote = !personalNoteLookup(match).isNullOrBlank()
+
+                                            val cellBg = when {
+                                                isNow -> EmeraldLive.copy(alpha = 0.22f)
+                                                isNext -> MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
+                                                isChanged -> SunsetOrange.copy(alpha = 0.16f)
+                                                else -> accentColor.copy(alpha = 0.12f)
+                                            }
+                                            val cellBorder = when {
+                                                isNow -> BorderStroke(1.5.dp, EmeraldLive)
+                                                isNext -> BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary)
+                                                isChanged -> BorderStroke(1.5.dp, SunsetOrange)
+                                                else -> null
+                                            }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = cellBg,
+                                                border = cellBorder,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = 50.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .clickable { onPeriodClick(match) }
+                                            ) {
+                                                Box(
+                                                    contentAlignment = Alignment.Center,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(4.dp)
+                                                ) {
+                                                    if (isChanged) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .align(Alignment.TopStart)
+                                                                .size(6.dp)
+                                                                .clip(CircleShape)
+                                                                .background(SunsetOrange)
+                                                        )
+                                                    }
+                                                    if (hasNote) {
+                                                        Text(
+                                                            text = "✎",
+                                                            fontSize = 9.sp,
+                                                            color = MaterialTheme.colorScheme.secondary,
+                                                            modifier = Modifier.align(Alignment.TopEnd)
+                                                        )
+                                                    } else if (isNow) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .align(Alignment.TopEnd)
+                                                                .size(6.dp)
+                                                                .clip(CircleShape)
+                                                                .background(EmeraldLive)
+                                                        )
+                                                    }
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text(
+                                                            text = if (showTeacher) match.subjectName else TimetableCalculator.compactClassName(match.className),
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (isNow) EmeraldLive else MaterialTheme.colorScheme.onSurface,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        val subLine = if (showTeacher) {
+                                                            if (match.hideAfternoonTeacher) "" else match.teacherShortName
+                                                        } else {
+                                                            match.subjectName
+                                                        }
+                                                        if (subLine.isNotBlank()) {
+                                                            Text(
+                                                                text = subLine,
+                                                                fontSize = 10.sp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

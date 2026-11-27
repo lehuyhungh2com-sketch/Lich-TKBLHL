@@ -142,10 +142,19 @@ data class ResolvedPeriod(
     val startTime: VnTime,
     val endTime: VnTime,
     val liveStatus: PeriodLiveStatus = PeriodLiveStatus.UPCOMING,
-    val isChanged: Boolean = false
+    val isChanged: Boolean = false,
+    val hideAfternoonTeacher: Boolean = false
 ) {
     val isAfternoon: Boolean get() = session == "afternoon"
     val timeRangeText: String get() = "${startTime.formatHHmm()} – ${endTime.formatHHmm()}"
+}
+
+data class AfternoonMonthCycle(
+    val month: Int,
+    val weeks: List<Int>
+) {
+    val sectionTitle: String
+        get() = "BUỔI CHIỀU — THÁNG $month (Tuần ${weeks.joinToString(", ")})"
 }
 
 enum class CalendarEventCategory(val key: String, val label: String) {

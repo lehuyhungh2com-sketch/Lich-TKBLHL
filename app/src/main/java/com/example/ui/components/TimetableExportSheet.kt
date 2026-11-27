@@ -57,6 +57,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.ResolvedPeriod
+import com.example.domain.model.SchoolConfig
+import com.example.domain.model.WeekInfo
 import com.example.util.TimetableShareHelper
 import com.example.util.TimetableShareScope
 
@@ -70,6 +72,10 @@ fun TimetableExportSheet(
     periods: List<ResolvedPeriod>,
     showTeacher: Boolean,
     initialScope: TimetableShareScope = TimetableShareScope.FULL_DAY,
+    selectedWeekNumber: Int = Regex("(\\d+)").find(weekLabel)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1,
+    schoolConfig: SchoolConfig = SchoolConfig(),
+    weeks: List<WeekInfo> = emptyList(),
+    afternoonCyclePeriods: List<ResolvedPeriod>? = null,
     onDismiss: () -> Unit,
     onNotify: (String) -> Unit
 ) {
@@ -77,12 +83,17 @@ fun TimetableExportSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedScope by remember(initialScope) { mutableStateOf(initialScope) }
 
+    val effectiveAfternoon = remember(periods, afternoonCyclePeriods) {
+        (afternoonCyclePeriods ?: periods.filter { it.isAfternoon }).filter { it.isAfternoon }
+    }
     val morningCount = remember(periods) { periods.count { !it.isAfternoon } }
-    val afternoonCount = remember(periods) { periods.count { it.isAfternoon } }
-    val allCount = periods.size
+    val afternoonCount = effectiveAfternoon.size
+    val allCount = morningCount + afternoonCount
 
-    val scopedPeriods = remember(periods, selectedScope) {
-        selectedScope.filterPeriods(periods)
+    val hasScopedData = when (selectedScope) {
+        TimetableShareScope.FULL_DAY -> morningCount > 0 || afternoonCount > 0
+        TimetableShareScope.MORNING -> morningCount > 0
+        TimetableShareScope.AFTERNOON -> afternoonCount > 0
     }
 
     val previewBitmap: Bitmap? = remember(
@@ -91,10 +102,14 @@ fun TimetableExportSheet(
         weekLabel,
         dateRange,
         periods,
+        effectiveAfternoon,
         showTeacher,
-        selectedScope
+        selectedScope,
+        selectedWeekNumber,
+        schoolConfig,
+        weeks
     ) {
-        if (scopedPeriods.isEmpty()) null
+        if (!hasScopedData) null
         else TimetableShareHelper.renderWeeklyTimetableBitmap(
             title = title,
             subtitle = subtitle,
@@ -102,7 +117,11 @@ fun TimetableExportSheet(
             dateRange = dateRange,
             periods = periods,
             showTeacher = showTeacher,
-            scope = selectedScope
+            scope = selectedScope,
+            selectedWeekNumber = selectedWeekNumber,
+            schoolConfig = schoolConfig,
+            weeks = weeks,
+            afternoonPeriods = effectiveAfternoon
         )
     }
 
@@ -124,7 +143,11 @@ fun TimetableExportSheet(
                 dateRange = dateRange,
                 periods = periods,
                 showTeacher = showTeacher,
-                scope = selectedScope
+                scope = selectedScope,
+                selectedWeekNumber = selectedWeekNumber,
+                schoolConfig = schoolConfig,
+                weeks = weeks,
+                afternoonPeriods = effectiveAfternoon
             )
             notifyUser(
                 if (ok) "Đã tải ảnh ${selectedScope.label} về máy."
@@ -312,7 +335,11 @@ fun TimetableExportSheet(
                                 dateRange = dateRange,
                                 periods = periods,
                                 showTeacher = showTeacher,
-                                scope = selectedScope
+                                scope = selectedScope,
+                                selectedWeekNumber = selectedWeekNumber,
+                                schoolConfig = schoolConfig,
+                                weeks = weeks,
+                                afternoonPeriods = effectiveAfternoon
                             )
                             notifyUser(
                                 if (ok) "Đã lưu ảnh ${selectedScope.label} vào Thư viện (Pictures/TKB_LeHuuLap)."
@@ -325,7 +352,7 @@ fun TimetableExportSheet(
                             )
                         }
                     },
-                    enabled = scopedPeriods.isNotEmpty(),
+                    enabled = hasScopedData,
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                     modifier = Modifier
@@ -352,7 +379,11 @@ fun TimetableExportSheet(
                             dateRange = dateRange,
                             periods = periods,
                             showTeacher = showTeacher,
-                            scope = selectedScope
+                            scope = selectedScope,
+                            selectedWeekNumber = selectedWeekNumber,
+                            schoolConfig = schoolConfig,
+                            weeks = weeks,
+                            afternoonPeriods = effectiveAfternoon
                         )
                         if (!ok) {
                             notifyUser("Không thể tạo ảnh chia sẻ lúc này.")
@@ -360,7 +391,7 @@ fun TimetableExportSheet(
                             onDismiss()
                         }
                     },
-                    enabled = scopedPeriods.isNotEmpty(),
+                    enabled = hasScopedData,
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                     modifier = Modifier

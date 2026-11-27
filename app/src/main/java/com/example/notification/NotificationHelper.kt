@@ -107,14 +107,17 @@ object NotificationHelper {
         subjectName: String,
         startTimeText: String,
         room: String,
-        leadMinutes: Int = 10
+        leadMinutes: Int = 10,
+        isAfternoon: Boolean = false
     ) {
         if (!hasNotificationPermission(context)) return
         createChannels(context)
 
         val roomPart = if (room.isNotBlank()) " • Phòng $room" else ""
-        val title = "Còn $leadMinutes phút vào Tiết $periodNumber ($startTimeText)"
+        val sessionLabel = if (isAfternoon) "Buổi chiều" else "Tiết $periodNumber"
+        val title = "Còn $leadMinutes phút vào $sessionLabel ($startTimeText)"
         val body = "Lớp $className — $subjectName$roomPart"
+        val notifId = PERIOD_NOTIFICATION_BASE_ID + (if (isAfternoon) 50 else 0) + periodNumber
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -122,7 +125,7 @@ object NotificationHelper {
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            PERIOD_NOTIFICATION_BASE_ID + periodNumber,
+            notifId,
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -138,7 +141,7 @@ object NotificationHelper {
 
         runCatching {
             NotificationManagerCompat.from(context)
-                .notify(PERIOD_NOTIFICATION_BASE_ID + periodNumber, notification)
+                .notify(notifId, notification)
         }
     }
 }

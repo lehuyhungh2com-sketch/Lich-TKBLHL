@@ -251,18 +251,38 @@ fun PeriodRowCard(
                     .background(badgeBg)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = if (isPast) "✓${period.period}" else "T${period.period}",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = badgeText
-                    )
-                    Text(
-                        text = if (period.isAfternoon) "Chiều" else "Sáng",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = 9.sp,
-                        color = badgeText.copy(alpha = 0.85f)
-                    )
+                    if (period.isAfternoon) {
+                        Text(
+                            text = if (isPast) "✓" else "Chiều",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = if (isPast) 13.sp else 11.sp,
+                            color = badgeText,
+                            maxLines = 1
+                        )
+                        if (isPast) {
+                            Text(
+                                text = "Chiều",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = badgeText.copy(alpha = 0.85f),
+                                maxLines = 1
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = if (isPast) "✓${period.period}" else "T${period.period}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeText
+                        )
+                        Text(
+                            text = "Sáng",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 9.sp,
+                            color = badgeText.copy(alpha = 0.85f)
+                        )
+                    }
                 }
             }
 
@@ -328,7 +348,7 @@ fun PeriodRowCard(
                         )
                     }
 
-                    if (showTeacherName && period.teacherShortName.isNotBlank()) {
+                    if (showTeacherName && !period.hideAfternoonTeacher && period.teacherShortName.isNotBlank()) {
                         Text(
                             text = "GV: ${period.teacherShortName}",
                             style = MaterialTheme.typography.bodySmall,
@@ -653,7 +673,8 @@ fun LiveWidgetPreviewCard(
                     )
                 } else {
                     val visible = todayPeriods.take(5)
-                    val tagWidth = (28f * fontScale.coerceAtLeast(1f)).dp
+                    val hasAfternoon = visible.any { it.isAfternoon }
+                    val tagWidth = ((if (hasAfternoon) 42f else 28f) * fontScale.coerceAtLeast(1f)).dp
                     visible.forEachIndexed { idx, p ->
                         Row(
                             modifier = Modifier
@@ -662,7 +683,7 @@ fun LiveWidgetPreviewCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (p.isAfternoon) "C${p.period}" else "T${p.period}",
+                                text = if (p.isAfternoon) "Chiều" else "T${p.period}",
                                 fontSize = sp(10.5f),
                                 fontWeight = FontWeight.Bold,
                                 color = if (p.isAfternoon) SkyBlue else accentOrange,
@@ -935,8 +956,14 @@ fun LiveWeatherTimetablePreviewCard(
                     maxLines = 1
                 )
                 val statusLabel = when {
-                    teachingNow != null -> "● Đang dạy: T${teachingNow.period} (${TimetableCalculator.compactClassName(teachingNow.className)})"
-                    nextPeriod != null -> "● Tiếp: T${nextPeriod.period} (${nextPeriod.startTime.formatHHmm()})"
+                    teachingNow != null -> {
+                        val tag = if (teachingNow.isAfternoon) "Chiều" else "T${teachingNow.period}"
+                        "● Đang dạy: $tag (${TimetableCalculator.compactClassName(teachingNow.className)})"
+                    }
+                    nextPeriod != null -> {
+                        val tag = if (nextPeriod.isAfternoon) "Chiều" else "T${nextPeriod.period}"
+                        "● Tiếp: $tag (${nextPeriod.startTime.formatHHmm()})"
+                    }
                     else -> null
                 }
                 if (statusLabel != null) {
@@ -969,7 +996,7 @@ fun LiveWeatherTimetablePreviewCard(
                             pair.forEach { p ->
                                 val isNow = p.liveStatus == PeriodLiveStatus.TEACHING_NOW
                                 val isPast = p.liveStatus == PeriodLiveStatus.PAST
-                                val tag = if (p.isAfternoon) "C${p.period}" else "T${p.period}"
+                                val tag = if (p.isAfternoon) "Chiều" else "T${p.period}"
                                 val tagColor = when {
                                     isNow -> liveAccent
                                     isPast -> mutedPastText

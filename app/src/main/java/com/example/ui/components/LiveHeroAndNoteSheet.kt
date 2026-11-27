@@ -143,7 +143,7 @@ fun LivePeriodHeroCard(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "ĐANG DẠY • ${if (teachingNow.isAfternoon) "C" else "T"}${teachingNow.period}",
+                                    text = "ĐANG DẠY • ${if (teachingNow.isAfternoon) "Chiều" else "T${teachingNow.period}"}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -285,7 +285,7 @@ fun LivePeriodHeroCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "TIẾT TIẾP THEO • ${if (nextPeriod.isAfternoon) "C" else "T"}${nextPeriod.period}",
+                                text = "TIẾT TIẾP THEO • ${if (nextPeriod.isAfternoon) "Chiều" else "T${nextPeriod.period}"}",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -528,8 +528,9 @@ fun LessonNoteEditorSheet(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
+                    val sessionTag = if (period.isAfternoon) "Chiều" else "Sáng T${period.period}"
                     Text(
-                        text = "${period.day} • ${if (period.isAfternoon) "Chiều" else "Sáng"} T${period.period} • Lớp $shortClass (${period.subjectName})",
+                        text = "${period.day} • $sessionTag • Lớp $shortClass (${period.subjectName})",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -755,12 +756,12 @@ fun LiveTimetableOnlyPreviewCard(
 
                 val statusText = when {
                     teachingNow != null -> {
-                        val tag = if (teachingNow.isAfternoon) "C${teachingNow.period}" else "T${teachingNow.period}"
+                        val tag = if (teachingNow.isAfternoon) "Chiều" else "T${teachingNow.period}"
                         val left = (teachingNow.endTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
                         "● Đang dạy $tag (${TimetableCalculator.compactClassName(teachingNow.className)}) · còn ${left}p"
                     }
                     nextPeriod != null -> {
-                        val tag = if (nextPeriod.isAfternoon) "C${nextPeriod.period}" else "T${nextPeriod.period}"
+                        val tag = if (nextPeriod.isAfternoon) "Chiều" else "T${nextPeriod.period}"
                         val until = (nextPeriod.startTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
                         val countdown = if (until < 60) "còn ${until}p" else nextPeriod.startTime.formatHHmm()
                         "Tiếp: $tag · $countdown"
@@ -805,13 +806,14 @@ fun LiveTimetableOnlyPreviewCard(
                 )
             } else {
                 val visible = todayPeriods.take(5)
-                val tagColWidth = (38f * fontScale.coerceAtLeast(1f)).dp
+                val hasAfternoon = visible.any { it.isAfternoon }
+                val tagColWidth = ((if (hasAfternoon) 46f else 38f) * fontScale.coerceAtLeast(1f)).dp
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     visible.forEach { p ->
                         val isNow = p.liveStatus == PeriodLiveStatus.TEACHING_NOW
                         val isNext = p.liveStatus == PeriodLiveStatus.NEXT_PERIOD
                         val isPast = p.liveStatus == PeriodLiveStatus.PAST
-                        val baseTag = if (p.isAfternoon) "C${p.period}" else "T${p.period}"
+                        val baseTag = if (p.isAfternoon) "Chiều" else "T${p.period}"
                         val tag = when {
                             isNow -> "● $baseTag"
                             isPast -> "✓ $baseTag"

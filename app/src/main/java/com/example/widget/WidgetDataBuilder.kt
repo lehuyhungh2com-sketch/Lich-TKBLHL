@@ -107,13 +107,13 @@ data class WidgetRenderData(
         val nextPeriod = all.firstOrNull { it.liveStatus == PeriodLiveStatus.NEXT_PERIOD }
         return when {
             teachingNow != null -> {
-                val tag = if (teachingNow.isAfternoon) "C${teachingNow.period}" else "T${teachingNow.period}"
+                val tag = if (teachingNow.isAfternoon) "Chiều" else "T${teachingNow.period}"
                 val cls = TimetableCalculator.compactClassName(teachingNow.className)
                 val left = (teachingNow.endTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
                 "● Đang dạy $tag ($cls) · còn ${left}p" to palette.liveNowAccent
             }
             nextPeriod != null -> {
-                val tag = if (nextPeriod.isAfternoon) "C${nextPeriod.period}" else "T${nextPeriod.period}"
+                val tag = if (nextPeriod.isAfternoon) "Chiều" else "T${nextPeriod.period}"
                 val until = (nextPeriod.startTime.totalMinutes - now.totalMinutes).coerceAtLeast(1)
                 val countdown = if (until < 60) "còn ${until}p" else nextPeriod.startTime.formatHHmm()
                 "Tiếp: $tag · $countdown" to palette.nextPeriodAccent

@@ -202,26 +202,47 @@ class FirestoreReadOnlyClient(private val context: Context) {
             .get()
             .await()
 
-        return snap.documents.map { doc ->
-            val rawSession = doc.getString("session")
-            val normalizedSession = if (rawSession == "afternoon") "afternoon" else "morning"
-            val rawActual = (doc.get("actualPeriod") as? Number)?.toInt()
-                ?: (doc.get("actualPeriod") as? String)?.toIntOrNull()
-            TimetableSlot(
-                id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id,
-                week = (doc.get("week") as? Number)?.toInt() ?: weekNumber,
-                classId = doc.getString("classId").orEmpty(),
-                day = doc.getString("day").orEmpty(),
-                period = (doc.get("period") as? Number)?.toInt() ?: 1,
-                subjectId = doc.getString("subjectId").orEmpty(),
-                teacherId = doc.getString("teacherId").orEmpty(),
-                room = doc.getString("room")?.takeIf { it.isNotBlank() },
-                note = doc.getString("note")?.takeIf { it.isNotBlank() },
-                customLabel = doc.getString("customLabel")?.takeIf { it.isNotBlank() },
-                session = normalizedSession,
-                actualPeriod = rawActual?.takeIf { it in 1..5 }
-            )
-        }
+        return snap.documents.map { doc -> parseTimetableSlotDoc(doc, defaultWeek = weekNumber) }
+    }
+
+    /** Read-only filtered query of `timetables` for a 4-week monthly cycle using `whereIn("week", weeks)` */
+    suspend fun fetchTimetablesForWeeks(weekNumbers: List<Int>): List<TimetableSlot> {
+        val distinctWeeks = weekNumbers.distinct().take(10)
+        if (distinctWeeks.isEmpty()) return emptyList()
+        if (distinctWeeks.size == 1) return fetchTimetablesForWeek(distinctWeeks.first())
+
+        val snap = requireFirestore()
+            .collection("timetables")
+            .whereIn("week", distinctWeeks)
+            .get()
+            .await()
+
+        val fallbackWeek = distinctWeeks.first()
+        return snap.documents.map { doc -> parseTimetableSlotDoc(doc, defaultWeek = fallbackWeek) }
+    }
+
+    private fun parseTimetableSlotDoc(
+        doc: com.google.firebase.firestore.DocumentSnapshot,
+        defaultWeek: Int
+    ): TimetableSlot {
+        val rawSession = doc.getString("session")
+        val normalizedSession = if (rawSession == "afternoon") "afternoon" else "morning"
+        val rawActual = (doc.get("actualPeriod") as? Number)?.toInt()
+            ?: (doc.get("actualPeriod") as? String)?.toIntOrNull()
+        return TimetableSlot(
+            id = doc.getString("id")?.takeIf { it.isNotBlank() } ?: doc.id,
+            week = (doc.get("week") as? Number)?.toInt() ?: defaultWeek,
+            classId = doc.getString("classId").orEmpty(),
+            day = doc.getString("day").orEmpty(),
+            period = (doc.get("period") as? Number)?.toInt() ?: 1,
+            subjectId = doc.getString("subjectId").orEmpty(),
+            teacherId = doc.getString("teacherId").orEmpty(),
+            room = doc.getString("room")?.takeIf { it.isNotBlank() },
+            note = doc.getString("note")?.takeIf { it.isNotBlank() },
+            customLabel = doc.getString("customLabel")?.takeIf { it.isNotBlank() },
+            session = normalizedSession,
+            actualPeriod = rawActual?.takeIf { it in 1..5 }
+        )
     }
 
     /** Read-only fetch of `cai_dat_he_thong/weeks_config` including locked week snapshots */

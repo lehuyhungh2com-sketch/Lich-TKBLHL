@@ -373,4 +373,103 @@ class LhlBusinessLogicTest {
         val notifSummary = TimetableCalculator.formatNotificationSummary("Thứ Hai", resolved, emptyList())
         assertTrue(notifSummary.contains("T3 9A1 (08:45 - Tin học), T5 8A1 (10:25 - Tin học)"))
     }
+
+    @Test
+    fun getAfternoonMonthCycle_matchesWebMonthlyCycles() {
+        val c1 = TimetableCalculator.getAfternoonMonthCycle(1)
+        assertEquals(9, c1.month)
+        assertEquals(listOf(1, 2, 3, 4), c1.weeks)
+
+        val c12 = TimetableCalculator.getAfternoonMonthCycle(12)
+        assertEquals(11, c12.month)
+        assertEquals(listOf(9, 10, 11, 12), c12.weeks)
+        assertEquals("BUỔI CHIỀU — THÁNG 11 (Tuần 9, 10, 11, 12)", c12.sectionTitle)
+
+        val c17 = TimetableCalculator.getAfternoonMonthCycle(17)
+        assertEquals(1, c17.month)
+        assertEquals(listOf(17, 18, 19, 20), c17.weeks)
+
+        val c21 = TimetableCalculator.getAfternoonMonthCycle(21)
+        assertEquals(2, c21.month)
+        assertEquals(listOf(21, 22, 23, 24), c21.weeks)
+
+        val c35 = TimetableCalculator.getAfternoonMonthCycle(35)
+        assertEquals(5, c35.month)
+        assertEquals(listOf(33, 34, 35, 36), c35.weeks)
+    }
+
+    @Test
+    fun afternoonClubAndHsgSubjects_normalizeCorrectlyAndHideTeacherUnlessOverridden() {
+        assertEquals(
+            "Sinh hoạt CLB",
+            TimetableCalculator.readableSubjectName("sub-clb", "Sinh hoạt CLB", "SHCLB", session = "afternoon")
+        )
+        assertEquals(
+            "Sinh hoạt CLB",
+            TimetableCalculator.readableSubjectName("sub-club", "Sinh hoạt", "CLB", session = "afternoon")
+        )
+        assertEquals(
+            "SH CLB TOAN",
+            TimetableCalculator.readableSubjectName("sub-clb-toan", "CLB-TOAN", "CLB-TOAN", session = "afternoon")
+        )
+        assertEquals(
+            "Bồi dưỡng HSG",
+            TimetableCalculator.readableSubjectName("sub-bdhsg", "Bồi dưỡng HSG", "BDHSG", session = "afternoon")
+        )
+        assertEquals(
+            "Sinh hoạt lớp",
+            TimetableCalculator.readableSubjectName("sub-shl", "Sinh hoạt lớp", "SHL", session = "morning")
+        )
+
+        val teachers = listOf(
+            Teacher(id = "gv-hung", name = "Lê Huy Hùng", shortName = "Hùng", email = "h@lhl.vn"),
+            Teacher(id = "gv-hoa", name = "Nguyễn Thị Hoa", shortName = "Hoa", email = "hoa@lhl.vn")
+        )
+        val classes = listOf(SchoolClass(id = "6A1", name = "6A1", grade = 6))
+        val subjects = listOf(
+            Subject(id = "sub-clb", name = "Sinh hoạt CLB", code = "SHCLB"),
+            Subject(id = "sub-bdhsg", name = "Bồi dưỡng HSG", code = "BDHSG"),
+            Subject(id = "sub-tin", name = "Tin học", code = "Tin", afternoonTeacherOverride = mapOf("6A1" to "gv-hung"))
+        )
+        val slots = listOf(
+            TimetableSlot("c1", 12, "6A1", "T3", 3, "sub-clb", "gv-hoa", session = "afternoon"),
+            TimetableSlot("c2", 12, "6A1", "T5", 3, "sub-bdhsg", "gv-hoa", session = "afternoon"),
+            TimetableSlot("c3", 12, "6A1", "T2", 3, "sub-tin", "gv-hoa", session = "afternoon")
+        )
+
+        val resolved = TimetableCalculator.resolveWeekPeriods(
+            weekNumber = 12,
+            rawSlots = slots,
+            schoolConfig = SchoolConfig(),
+            weekInfo = WeekInfo(12, "2026-11-23", "2026-11-29", "Tuần 12", isLocked = false),
+            deletedSlotKeys = emptySet(),
+            teachers = teachers,
+            classes = classes,
+            subjects = subjects,
+            assignments = emptyList(),
+            filterClassId = "6A1"
+        )
+
+        assertEquals(3, resolved.size)
+        val clb = resolved.first { it.slotId == "c1" }
+        val hsg = resolved.first { it.slotId == "c2" }
+        val tin = resolved.first { it.slotId == "c3" }
+
+        assertEquals("Sinh hoạt CLB", clb.subjectName)
+        assertTrue(clb.hideAfternoonTeacher)
+        assertEquals("Bồi dưỡng HSG", hsg.subjectName)
+        assertTrue(hsg.hideAfternoonTeacher)
+        assertEquals("Tin học", tin.subjectName)
+        assertFalse(tin.hideAfternoonTeacher)
+        assertEquals("gv-hung", tin.teacherId)
+
+        val compactAfternoon = TimetableCalculator.formatCompactSessionLine("Chiều", listOf(clb, tin))
+        assertFalse(compactAfternoon.contains("T3"))
+        assertTrue(compactAfternoon.contains("Sinh hoạt CLB"))
+        assertFalse(compactAfternoon.contains("Hoa"))
+
+        val notif = TimetableCalculator.formatNotificationSummary("Thứ Tư", emptyList(), listOf(tin))
+        assertTrue(notif.contains("Chiều: 6A1"))
+        assertFalse(notif.contains("T3"))
+    }
 }

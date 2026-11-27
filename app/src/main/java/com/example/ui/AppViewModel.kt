@@ -18,6 +18,7 @@ import com.example.domain.lunar.LunarCalendar
 import com.example.domain.lunar.LunarDate
 import com.example.domain.lunar.VnDate
 import com.example.domain.lunar.VnTime
+import com.example.domain.model.AfternoonMonthCycle
 import com.example.domain.model.Assignment
 import com.example.domain.model.CalendarEvent
 import com.example.domain.model.ResolvedPeriod
@@ -68,6 +69,9 @@ data class MainUiState(
     val teacherTodayPeriods: List<ResolvedPeriod> = emptyList(),
     val selectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val allSelectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
+    val selectedCycle: AfternoonMonthCycle = TimetableCalculator.getAfternoonMonthCycle(1),
+    val selectedCycleAfternoonPeriods: List<ResolvedPeriod> = emptyList(),
+    val allSelectedCycleAfternoonPeriods: List<ResolvedPeriod> = emptyList(),
     val currentWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val changedPeriodCount: Int = 0,
     val changeComparisonLabel: String? = null,
@@ -187,11 +191,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         schoolRepo.observeSlotSnapshotForWeek(week)
     }
 
+    private val selectedCycleSlotsFlow = effectiveSelectedWeekFlow.flatMapLatest { week ->
+        val cycleWeeks = TimetableCalculator.getAfternoonMonthCycle(week).weeks
+        schoolRepo.observeSlotsForWeeks(cycleWeeks)
+    }
+
     private val baselineSlotsBundleFlow = combine(
         previousWeekSlotsFlow,
-        selectedWeekSnapshotFlow
-    ) { prevWeekSlots, syncSnapshotSlots ->
-        prevWeekSlots to syncSnapshotSlots
+        selectedWeekSnapshotFlow,
+        selectedCycleSlotsFlow
+    ) { prevWeekSlots, syncSnapshotSlots, cycleSlots ->
+        WeekAuxSlotsBundle(prevWeekSlots, syncSnapshotSlots, cycleSlots)
     }
 
     private val workloadStatsFlow = combine(
@@ -260,12 +270,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         baselineSlotsBundleFlow,
         workloadStatsFlow,
         metaAndWeatherFlow
-    ) { curSlots, selSlots, baselinePair, workloadStats, mwp ->
+    ) { curSlots, selSlots, auxSlots, workloadStats, mwp ->
         SlotsAndMetaBundle(
             currentWeekSlots = curSlots,
             selectedWeekSlots = selSlots,
-            previousWeekSlots = baselinePair.first,
-            snapshotWeekSlots = baselinePair.second,
+            previousWeekSlots = auxSlots.previousWeekSlots,
+            snapshotWeekSlots = auxSlots.snapshotWeekSlots,
+            cycleSlots = auxSlots.cycleSlots,
             workloadStats = workloadStats,
             meta = mwp
         )
@@ -425,6 +436,55 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             currentWeekResolved
         }
 
+        val selectedCycle = TimetableCalculator.getAfternoonMonthCycle(selectedWeek)
+        val cycleSlotsByWeek = bundle.cycleSlots.groupBy { it.week }
+        val allSelectedCycleAfternoonResolved = if (currentTeacher != null) {
+            selectedCycle.weeks.flatMap { wNum ->
+                val wInfo = catalog.weeks.firstOrNull { it.weekNumber == wNum }
+                TimetableCalculator.resolveWeekPeriods(
+                    weekNumber = wNum,
+                    rawSlots = cycleSlotsByWeek[wNum].orEmpty(),
+                    schoolConfig = catalog.config,
+                    weekInfo = wInfo,
+                    deletedSlotKeys = catalog.deletedKeys,
+                    teachers = catalog.teachers,
+                    classes = catalog.classes,
+                    subjects = catalog.subjects,
+                    assignments = catalog.assignments,
+                    filterTeacherId = null,
+                    filterClassId = null,
+                    todayDate = if (wNum == currentWeek && !isSundayPreview) today else null,
+                    nowTime = if (wNum == currentWeek && !isSundayPreview) now else null
+                ).filter { it.isAfternoon }
+            }
+        } else {
+            emptyList()
+        }
+        val selectedCycleAfternoonResolved = if (currentTeacher != null) {
+            selectedCycle.weeks.flatMap { wNum ->
+                val wInfo = catalog.weeks.firstOrNull { it.weekNumber == wNum }
+                TimetableCalculator.resolveWeekPeriods(
+                    weekNumber = wNum,
+                    rawSlots = cycleSlotsByWeek[wNum].orEmpty(),
+                    schoolConfig = catalog.config,
+                    weekInfo = wInfo,
+                    deletedSlotKeys = catalog.deletedKeys,
+                    teachers = catalog.teachers,
+                    classes = catalog.classes,
+                    subjects = catalog.subjects,
+                    assignments = catalog.assignments,
+                    filterTeacherId = filterTeacherId,
+                    filterClassId = filterClassId,
+                    todayDate = if (wNum == currentWeek && !isSundayPreview) today else null,
+                    nowTime = if (wNum == currentWeek && !isSundayPreview) now else null
+                ).filter { it.isAfternoon }
+            }.map { p ->
+                if (p.week == selectedWeek && p.slotId in changedSlotIds) p.copy(isChanged = true) else p
+            }
+        } else {
+            emptyList()
+        }
+
         val todayPeriods = effectiveCurrentWeekResolved.filter { it.day == targetDayCode }
         val teacherTodayPeriods = if (!showHomeroom) {
             todayPeriods
@@ -472,6 +532,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             teacherTodayPeriods = teacherTodayPeriods,
             selectedWeekPeriods = selectedWeekResolved,
             allSelectedWeekPeriods = allSelectedWeekResolved,
+            selectedCycle = selectedCycle,
+            selectedCycleAfternoonPeriods = selectedCycleAfternoonResolved,
+            allSelectedCycleAfternoonPeriods = allSelectedCycleAfternoonResolved,
             currentWeekPeriods = effectiveCurrentWeekResolved,
             changedPeriodCount = changedSlotIds.size,
             changeComparisonLabel = comparisonLabel,
@@ -779,11 +842,18 @@ private data class MetaWeatherPrefs(
     val calendarEvents: List<CalendarEvent>
 )
 
+private data class WeekAuxSlotsBundle(
+    val previousWeekSlots: List<TimetableSlot>,
+    val snapshotWeekSlots: List<TimetableSlot>,
+    val cycleSlots: List<TimetableSlot>
+)
+
 private data class SlotsAndMetaBundle(
     val currentWeekSlots: List<TimetableSlot>,
     val selectedWeekSlots: List<TimetableSlot>,
     val previousWeekSlots: List<TimetableSlot>,
     val snapshotWeekSlots: List<TimetableSlot>,
+    val cycleSlots: List<TimetableSlot>,
     val workloadStats: WorkloadStatsSummary,
     val meta: MetaWeatherPrefs
 )

@@ -16,8 +16,11 @@ import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.core.content.FileProvider
 import com.example.domain.lunar.VnDate
+import com.example.domain.model.AfternoonMonthCycle
 import com.example.domain.model.ResolvedPeriod
+import com.example.domain.model.SchoolConfig
 import com.example.domain.model.TimetableCalculator
+import com.example.domain.model.WeekInfo
 import java.io.File
 import java.io.FileOutputStream
 
@@ -55,8 +58,8 @@ enum class TimetableShareScope(
 
 /**
  * Renders a crisp high-resolution PNG image of a weekly timetable (Full day, Morning only,
- * or Afternoon only), supports sharing via Android Share Sheet (FileProvider), and saving
- * directly to the device gallery/files without needing broad storage permissions.
+ * or Afternoon 4-week monthly cycle), supports sharing via Android Share Sheet (FileProvider),
+ * and saving directly to the device gallery/files without needing broad storage permissions.
  */
 object TimetableShareHelper {
 
@@ -69,6 +72,12 @@ object TimetableShareHelper {
         return "TKB_${scope.fileTag}_${safeWeek}_${System.currentTimeMillis()}.png"
     }
 
+    private fun parseWeekNumberFromLabel(weekLabel: String): Int {
+        return Regex("(\\d+)").find(weekLabel)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?.coerceIn(TimetableCalculator.MIN_WEEK, TimetableCalculator.MAX_WEEK)
+            ?: 1
+    }
+
     fun shareWeeklyTimetableImage(
         context: Context,
         title: String,
@@ -77,7 +86,11 @@ object TimetableShareHelper {
         dateRange: String,
         periods: List<ResolvedPeriod>,
         showTeacher: Boolean,
-        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY,
+        selectedWeekNumber: Int = parseWeekNumberFromLabel(weekLabel),
+        schoolConfig: SchoolConfig = SchoolConfig(),
+        weeks: List<WeekInfo> = emptyList(),
+        afternoonPeriods: List<ResolvedPeriod> = periods.filter { it.isAfternoon }
     ): Boolean {
         return runCatching {
             val bitmap = renderWeeklyTimetableBitmap(
@@ -87,7 +100,11 @@ object TimetableShareHelper {
                 dateRange = dateRange,
                 periods = periods,
                 showTeacher = showTeacher,
-                scope = scope
+                scope = scope,
+                selectedWeekNumber = selectedWeekNumber,
+                schoolConfig = schoolConfig,
+                weeks = weeks,
+                afternoonPeriods = afternoonPeriods
             )
 
             val dir = File(context.cacheDir, "shared_timetables").apply { mkdirs() }
@@ -128,7 +145,11 @@ object TimetableShareHelper {
         dateRange: String,
         periods: List<ResolvedPeriod>,
         showTeacher: Boolean,
-        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY,
+        selectedWeekNumber: Int = parseWeekNumberFromLabel(weekLabel),
+        schoolConfig: SchoolConfig = SchoolConfig(),
+        weeks: List<WeekInfo> = emptyList(),
+        afternoonPeriods: List<ResolvedPeriod> = periods.filter { it.isAfternoon }
     ): Boolean {
         val resolver = context.contentResolver
         val fileName = suggestedFileName(weekLabel, scope)
@@ -150,7 +171,11 @@ object TimetableShareHelper {
                 dateRange = dateRange,
                 periods = periods,
                 showTeacher = showTeacher,
-                scope = scope
+                scope = scope,
+                selectedWeekNumber = selectedWeekNumber,
+                schoolConfig = schoolConfig,
+                weeks = weeks,
+                afternoonPeriods = afternoonPeriods
             )
             try {
                 resolver.openOutputStream(itemUri)?.use { out ->
@@ -182,7 +207,11 @@ object TimetableShareHelper {
         dateRange: String,
         periods: List<ResolvedPeriod>,
         showTeacher: Boolean,
-        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY,
+        selectedWeekNumber: Int = parseWeekNumberFromLabel(weekLabel),
+        schoolConfig: SchoolConfig = SchoolConfig(),
+        weeks: List<WeekInfo> = emptyList(),
+        afternoonPeriods: List<ResolvedPeriod> = periods.filter { it.isAfternoon }
     ): Boolean {
         return runCatching {
             val bitmap = renderWeeklyTimetableBitmap(
@@ -192,7 +221,11 @@ object TimetableShareHelper {
                 dateRange = dateRange,
                 periods = periods,
                 showTeacher = showTeacher,
-                scope = scope
+                scope = scope,
+                selectedWeekNumber = selectedWeekNumber,
+                schoolConfig = schoolConfig,
+                weeks = weeks,
+                afternoonPeriods = afternoonPeriods
             )
             try {
                 context.contentResolver.openOutputStream(uri)?.use { out ->
@@ -214,11 +247,16 @@ object TimetableShareHelper {
         dateRange: String,
         periods: List<ResolvedPeriod>,
         showTeacher: Boolean,
-        scope: TimetableShareScope = TimetableShareScope.FULL_DAY
+        scope: TimetableShareScope = TimetableShareScope.FULL_DAY,
+        selectedWeekNumber: Int = parseWeekNumberFromLabel(weekLabel),
+        schoolConfig: SchoolConfig = SchoolConfig(),
+        weeks: List<WeekInfo> = emptyList(),
+        afternoonPeriods: List<ResolvedPeriod> = periods.filter { it.isAfternoon }
     ): Bitmap {
-        val scopedPeriods = scope.filterPeriods(periods)
-        val morning = scopedPeriods.filter { !it.isAfternoon }
-        val afternoon = scopedPeriods.filter { it.isAfternoon }
+        val morning = periods.filter { !it.isAfternoon }
+        val afternoon = afternoonPeriods.filter { it.isAfternoon }
+        val cycle = TimetableCalculator.getAfternoonMonthCycle(selectedWeekNumber)
+        val days = TimetableCalculator.SCHOOL_DAYS
 
         val drawMorning = when (scope) {
             TimetableShareScope.MORNING -> true
@@ -232,22 +270,25 @@ object TimetableShareHelper {
         }
 
         val morningMaxPeriod = 5
-        val afternoonMaxPeriod = (afternoon.maxOfOrNull { it.period } ?: 4).coerceIn(4, 5)
-
         val width = 1240
         val pad = 44f
         val headerHeight = 165f
         val tableTitleOffset = 46f
         val tableHeaderH = 50f
-        val rowH = 86f
+        val morningRowH = 86f
         val tableBottomGap = 10f
 
+        val afternoonRowHeights = cycle.weeks.map { wNum ->
+            val maxItemsInRow = days.maxOf { d -> afternoon.count { it.week == wNum && it.day == d } }
+            if (maxItemsInRow <= 1) 82f else (16f + maxItemsInRow * 58f + (maxItemsInRow - 1) * 6f)
+        }
+
         val morningBlockH = if (drawMorning) {
-            tableTitleOffset + tableHeaderH + rowH * morningMaxPeriod + tableBottomGap
+            tableTitleOffset + tableHeaderH + morningRowH * morningMaxPeriod + tableBottomGap
         } else 0f
         val betweenGap = if (drawMorning && drawAfternoon) 18f else 0f
         val afternoonBlockH = if (drawAfternoon) {
-            tableTitleOffset + tableHeaderH + rowH * afternoonMaxPeriod + tableBottomGap
+            tableTitleOffset + tableHeaderH + afternoonRowHeights.sum() + tableBottomGap
         } else 0f
         val footerH = 56f
         val height = (pad + headerHeight + 12f + morningBlockH + betweenGap + afternoonBlockH + footerH + pad).toInt()
@@ -307,14 +348,11 @@ object TimetableShareHelper {
 
         var y = pad + headerHeight + 12f
         if (drawMorning) {
-            y = drawSessionTable(
+            y = drawMorningTable(
                 canvas = canvas,
                 startY = y,
                 width = width,
                 pad = pad,
-                sectionTitle = "BUỔI SÁNG",
-                accentHex = "#EA580C",
-                cellFillHex = "#FFF7ED",
                 periods = morning,
                 maxPeriod = morningMaxPeriod,
                 showTeacher = showTeacher
@@ -323,16 +361,17 @@ object TimetableShareHelper {
 
         if (drawAfternoon) {
             if (drawMorning) y += betweenGap
-            y = drawSessionTable(
+            drawAfternoonMonthTable(
                 canvas = canvas,
                 startY = y,
                 width = width,
                 pad = pad,
-                sectionTitle = "BUỔI CHIỀU (HSG / CLB)",
-                accentHex = "#0284C7",
-                cellFillHex = "#F0F9FF",
+                cycle = cycle,
+                selectedWeekNumber = selectedWeekNumber,
+                schoolConfig = schoolConfig,
+                weeks = weeks,
                 periods = afternoon,
-                maxPeriod = afternoonMaxPeriod,
+                rowHeights = afternoonRowHeights,
                 showTeacher = showTeacher
             )
         }
@@ -344,8 +383,9 @@ object TimetableShareHelper {
             textAlign = Paint.Align.CENTER
         }
         val today = VnDate.today()
+        val totalShownCount = (if (drawMorning) morning.size else 0) + (if (drawAfternoon) afternoon.size else 0)
         canvas.drawText(
-            "Trường THCS Lê Hữu Lập • ${scope.label} • Xuất ngày ${today.formatDayMonth()}/${today.year} • Tổng ${scopedPeriods.size} tiết",
+            "Trường THCS Lê Hữu Lập • ${scope.label} • Xuất ngày ${today.formatDayMonth()}/${today.year} • Tổng $totalShownCount tiết",
             width / 2f,
             height - pad + 4f,
             footerPaint
@@ -354,28 +394,25 @@ object TimetableShareHelper {
         return bmp
     }
 
-    private fun drawSessionTable(
+    private fun drawMorningTable(
         canvas: Canvas,
         startY: Float,
         width: Int,
         pad: Float,
-        sectionTitle: String,
-        accentHex: String,
-        cellFillHex: String,
         periods: List<ResolvedPeriod>,
         maxPeriod: Int,
         showTeacher: Boolean
     ): Float {
         val days = TimetableCalculator.SCHOOL_DAYS
-        val accentColor = Color.parseColor(accentHex)
-        val cellFill = Color.parseColor(cellFillHex)
+        val accentColor = Color.parseColor("#EA580C")
+        val cellFill = Color.parseColor("#FFF7ED")
 
         val sectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accentColor
             textSize = 26f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        canvas.drawText(sectionTitle, pad + 8f, startY + 32f, sectionPaint)
+        canvas.drawText("BUỔI SÁNG", pad + 8f, startY + 32f, sectionPaint)
 
         val tableTop = startY + 46f
         val tableHeaderH = 50f
@@ -459,6 +496,158 @@ object TimetableShareHelper {
         }
 
         return tableBottom + 10f
+    }
+
+    private fun drawAfternoonMonthTable(
+        canvas: Canvas,
+        startY: Float,
+        width: Int,
+        pad: Float,
+        cycle: AfternoonMonthCycle,
+        selectedWeekNumber: Int,
+        schoolConfig: SchoolConfig,
+        weeks: List<WeekInfo>,
+        periods: List<ResolvedPeriod>,
+        rowHeights: List<Float>,
+        showTeacher: Boolean
+    ): Float {
+        val days = TimetableCalculator.SCHOOL_DAYS
+        val accentColor = Color.parseColor("#0284C7")
+        val selectedRowTint = Color.parseColor("#E0F2FE")
+        val cellFill = Color.parseColor("#F0F9FF")
+
+        val sectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accentColor
+            textSize = 26f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText(cycle.sectionTitle, pad + 8f, startY + 32f, sectionPaint)
+
+        val tableTop = startY + 46f
+        val tableHeaderH = 50f
+        val tableBottom = tableTop + tableHeaderH + rowHeights.sum()
+        val tableRect = RectF(pad, tableTop, width - pad, tableBottom)
+
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#E2E8F0")
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        canvas.drawRoundRect(tableRect, 22f, 22f, bgPaint)
+        canvas.drawRoundRect(tableRect, 22f, 22f, gridPaint)
+
+        val weekColW = 148f
+        val dayColW = (width - pad * 2 - weekColW) / days.size
+
+        val headerBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#F8FAFC") }
+        canvas.drawRect(pad + 2f, tableTop + 2f, width - pad - 2f, tableTop + tableHeaderH, headerBg)
+
+        val headerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#1E2430")
+            textSize = 23f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("Tuần", pad + weekColW / 2f, tableTop + 34f, headerTextPaint)
+        days.forEachIndexed { idx, d ->
+            val cx = pad + weekColW + idx * dayColW + dayColW / 2f
+            canvas.drawText(d, cx, tableTop + 34f, headerTextPaint)
+        }
+
+        val weekLabelPaint = Paint(headerTextPaint).apply {
+            color = accentColor
+            textSize = 22f
+        }
+        val selectedWeekBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = selectedRowTint }
+        val dateSubPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#64748B")
+            textSize = 15f
+            textAlign = Paint.Align.CENTER
+        }
+        val mainCellPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0F172A")
+            textSize = 21f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val subCellPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#475569")
+            textSize = 18f
+            textAlign = Paint.Align.CENTER
+        }
+        val filledBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cellFill }
+
+        var curTop = tableTop + tableHeaderH
+        cycle.weeks.forEachIndexed { rowIdx, wNum ->
+            val rH = rowHeights.getOrElse(rowIdx) { 82f }
+            val rowBottom = curTop + rH
+            val isSelectedWeek = wNum == selectedWeekNumber
+
+            if (isSelectedWeek) {
+                canvas.drawRect(pad + 2f, curTop + 1f, pad + weekColW - 1f, rowBottom - 1f, selectedWeekBgPaint)
+            }
+            canvas.drawLine(pad, curTop, width - pad, curTop, gridPaint)
+
+            val (ws, _) = TimetableCalculator.getWeekDateRange(wNum, schoolConfig, weeks)
+            val shortRange = "${ws.formatDayMonth()}–${ws.plusDays(5).formatDayMonth()}"
+            canvas.drawText("Tuần $wNum", pad + weekColW / 2f, curTop + rH / 2f - 4f, weekLabelPaint)
+            canvas.drawText(shortRange, pad + weekColW / 2f, curTop + rH / 2f + 20f, dateSubPaint)
+
+            days.forEachIndexed { idx, d ->
+                val colLeft = pad + weekColW + idx * dayColW
+                val colRight = colLeft + dayColW
+                canvas.drawLine(colLeft, tableTop, colLeft, tableBottom, gridPaint)
+
+                val matches = periods.filter { it.week == wNum && it.day == d }
+                if (matches.isNotEmpty()) {
+                    if (matches.size == 1) {
+                        val match = matches.first()
+                        val inner = RectF(colLeft + 6f, curTop + 6f, colRight - 6f, rowBottom - 6f)
+                        canvas.drawRoundRect(inner, 14f, 14f, filledBgPaint)
+                        drawAfternoonCellText(canvas, inner, match, showTeacher, mainCellPaint, subCellPaint)
+                    } else {
+                        val pillH = 58f
+                        val gap = 6f
+                        matches.forEachIndexed { mIdx, match ->
+                            val pTop = curTop + 8f + mIdx * (pillH + gap)
+                            val inner = RectF(colLeft + 6f, pTop, colRight - 6f, pTop + pillH)
+                            canvas.drawRoundRect(inner, 12f, 12f, filledBgPaint)
+                            drawAfternoonCellText(canvas, inner, match, showTeacher, mainCellPaint, subCellPaint)
+                        }
+                    }
+                }
+            }
+            curTop = rowBottom
+        }
+
+        return tableBottom + 10f
+    }
+
+    private fun drawAfternoonCellText(
+        canvas: Canvas,
+        inner: RectF,
+        match: ResolvedPeriod,
+        showTeacher: Boolean,
+        mainCellPaint: Paint,
+        subCellPaint: Paint
+    ) {
+        val line1 = if (showTeacher) {
+            truncateText(match.subjectName, 14)
+        } else {
+            TimetableCalculator.compactClassName(match.className)
+        }
+        val line2 = if (showTeacher) {
+            if (match.hideAfternoonTeacher) "" else truncateText(match.teacherShortName, 14)
+        } else {
+            truncateText(match.subjectName, 14)
+        }
+        if (line2.isBlank()) {
+            canvas.drawText(line1, inner.centerX(), inner.centerY() + 7f, mainCellPaint)
+        } else {
+            canvas.drawText(line1, inner.centerX(), inner.centerY() - 5f, mainCellPaint)
+            canvas.drawText(line2, inner.centerX(), inner.centerY() + 20f, subCellPaint)
+        }
     }
 
     private fun truncateText(text: String, maxChars: Int): String {

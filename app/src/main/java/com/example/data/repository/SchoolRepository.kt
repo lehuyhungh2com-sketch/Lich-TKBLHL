@@ -79,6 +79,9 @@ class SchoolRepository(
     fun observeSlotsForWeek(week: Int): Flow<List<TimetableSlot>> =
         dao.observeSlotsForWeek(week).map { list -> list.map { it.toDomain() } }
 
+    fun observeSlotsForWeeks(weeks: List<Int>): Flow<List<TimetableSlot>> =
+        dao.observeSlotsForWeeks(weeks).map { list -> list.map { it.toDomain() } }
+
     fun observeSlotSnapshotForWeek(week: Int): Flow<List<TimetableSlot>> =
         dao.observeSlotSnapshotForWeek(week).map { it?.toDomainSlots().orEmpty() }
 
@@ -339,32 +342,39 @@ class SchoolRepository(
                 weeks = weeks
             )
 
-            val localWeekVersion = dao.getWeekSyncVersion(weekToSync)
-            val needSlotsFetch = force ||
-                localWeekVersion == null ||
-                localWeekVersion.slotsVersion != remoteMeta.slotsVersion
+            val cycle = TimetableCalculator.getAfternoonMonthCycle(weekToSync)
+            val weeksToFetch = cycle.weeks.filter { wk ->
+                val localWeekVersion = dao.getWeekSyncVersion(wk)
+                force || localWeekVersion == null || localWeekVersion.slotsVersion != remoteMeta.slotsVersion
+            }
 
-            if (needSlotsFetch) {
-                val previousLocalSlots = dao.getSlotsForWeek(weekToSync).map { it.toDomain() }
-                val slots = firestore.fetchTimetablesForWeek(weekToSync)
-                if (previousLocalSlots.isNotEmpty() && previousLocalSlots.toSet() != slots.toSet()) {
-                    dao.upsertSlotSnapshot(
-                        TimetableSlotSnapshotEntity(
-                            week = weekToSync,
-                            slotsJson = LocalJson.slotsToJson(previousLocalSlots),
-                            savedAtMillis = System.currentTimeMillis()
+            if (weeksToFetch.isNotEmpty()) {
+                val fetchedSlots = firestore.fetchTimetablesForWeeks(weeksToFetch)
+                val fetchedByWeek = fetchedSlots.groupBy { it.week }
+                val nowMillis = System.currentTimeMillis()
+
+                for (wk in weeksToFetch) {
+                    val previousLocalSlots = dao.getSlotsForWeek(wk).map { it.toDomain() }
+                    val weekSlots = fetchedByWeek[wk].orEmpty()
+                    if (previousLocalSlots.isNotEmpty() && previousLocalSlots.toSet() != weekSlots.toSet()) {
+                        dao.upsertSlotSnapshot(
+                            TimetableSlotSnapshotEntity(
+                                week = wk,
+                                slotsJson = LocalJson.slotsToJson(previousLocalSlots),
+                                savedAtMillis = nowMillis
+                            )
+                        )
+                    }
+                    dao.replaceSlotsForWeek(wk, weekSlots.map { it.toEntity() })
+                    dao.upsertWeekSyncVersion(
+                        WeekSyncVersionEntity(
+                            weekNumber = wk,
+                            slotsVersion = remoteMeta.slotsVersion,
+                            syncedAtMillis = nowMillis
                         )
                     )
                 }
-                dao.replaceSlotsForWeek(weekToSync, slots.map { it.toEntity() })
-                dao.upsertWeekSyncVersion(
-                    WeekSyncVersionEntity(
-                        weekNumber = weekToSync,
-                        slotsVersion = remoteMeta.slotsVersion,
-                        syncedAtMillis = System.currentTimeMillis()
-                    )
-                )
-                updatedSections.add("TKB Tuần $weekToSync")
+                updatedSections.add("TKB Tháng ${cycle.month} (Tuần ${weeksToFetch.joinToString(", ")})")
             }
 
             dao.upsertSyncMetadata(
@@ -397,13 +407,20 @@ class SchoolRepository(
     }
 
     /**
-     * Loads a specific week on-demand if not yet cached for the latest slotsVersion.
+     * Loads a specific week and its 4-week monthly cycle on-demand if not yet cached for the latest slotsVersion.
      */
     suspend fun ensureWeekLoaded(weekNumber: Int): SyncOutcome = withContext(Dispatchers.IO) {
         val localMeta = dao.getSyncMetadata()
-        val weekSync = dao.getWeekSyncVersion(weekNumber)
-        if (localMeta != null && weekSync != null && weekSync.slotsVersion == localMeta.slotsVersion) {
-            return@withContext SyncOutcome(success = true, message = "Đã có sẵn Tuần $weekNumber trong bộ nhớ máy.")
+        val cycle = TimetableCalculator.getAfternoonMonthCycle(weekNumber)
+        val allCycleCached = localMeta != null && cycle.weeks.all { wk ->
+            val weekSync = dao.getWeekSyncVersion(wk)
+            weekSync != null && weekSync.slotsVersion == localMeta.slotsVersion
+        }
+        if (allCycleCached) {
+            return@withContext SyncOutcome(
+                success = true,
+                message = "Đã có sẵn Tuần $weekNumber (Tháng ${cycle.month}) trong bộ nhớ máy."
+            )
         }
         return@withContext syncIncremental(targetWeek = weekNumber, force = false)
     }

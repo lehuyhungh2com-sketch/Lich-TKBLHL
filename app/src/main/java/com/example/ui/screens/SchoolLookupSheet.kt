@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -119,7 +121,7 @@ fun SchoolLookupSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.88f)
+                .fillMaxHeight(0.95f)
                 .padding(horizontal = 16.dp)
         ) {
             Row(
@@ -130,21 +132,24 @@ fun SchoolLookupSheet(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Tra cứu & Đổi tiết",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "Tuần ${uiState.selectedWeekNumber} • Dùng dữ liệu offline đã tải",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(40.dp)
+                ) {
                     Icon(Icons.Rounded.Close, contentDescription = "Đóng tra cứu")
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             SegmentedOptionBar(
                 options = listOf(
@@ -156,7 +161,7 @@ fun SchoolLookupSheet(
                 onSelect = { activeTab = it }
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             when (activeTab) {
                 0 -> ClassTimetableLookupContent(
@@ -164,7 +169,10 @@ fun SchoolLookupSheet(
                     selectedClassId = selectedClassId,
                     onSelectClass = { selectedClassId = it },
                     onShareClass = { cls, periods ->
-                        if (periods.isEmpty()) {
+                        val hasCycleAfternoon = uiState.allSelectedCycleAfternoonPeriods.any {
+                            it.classId.equals(cls.id, ignoreCase = true)
+                        }
+                        if (periods.isEmpty() && !hasCycleAfternoon) {
                             onNotify("Lớp ${TimetableCalculator.compactClassName(cls.name)} chưa có tiết nào trong tuần này.")
                         } else {
                             pendingExportClass = cls to periods
@@ -202,6 +210,9 @@ fun SchoolLookupSheet(
             schoolConfig = uiState.schoolConfig,
             weeks = uiState.weeks
         )
+        val classCycleAfternoon = uiState.allSelectedCycleAfternoonPeriods.filter {
+            it.classId.equals(cls.id, ignoreCase = true)
+        }
         TimetableExportSheet(
             title = "TKB Lớp ${TimetableCalculator.compactClassName(cls.name)}",
             subtitle = uiState.schoolConfig.name,
@@ -209,6 +220,10 @@ fun SchoolLookupSheet(
             dateRange = "${ws.formatDayMonth()} – ${we.formatDayMonth()}/${we.year}",
             periods = periods,
             showTeacher = true,
+            selectedWeekNumber = uiState.selectedWeekNumber,
+            schoolConfig = uiState.schoolConfig,
+            weeks = uiState.weeks,
+            afternoonCyclePeriods = classCycleAfternoon,
             onDismiss = { pendingExportClass = null },
             onNotify = onNotify
         )
@@ -595,7 +610,7 @@ private fun TeacherAvailabilityLookupContent(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun SwapSubstituteLookupContent(
     uiState: MainUiState,
@@ -631,85 +646,8 @@ private fun SwapSubstituteLookupContent(
     }
 
     val selectedPeriod = myPeriods.firstOrNull { it.slotId == selectedSlotId } ?: myPeriods.first()
-
-    Text(
-        text = "1. Chọn tiết của bạn cần đổi hoặc nhờ dạy thay:",
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface
-    )
-
-    Spacer(modifier = Modifier.height(6.dp))
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        myPeriods.forEach { p ->
-            val isSelected = p.slotId == selectedPeriod.slotId
-            val sesShort = if (p.isAfternoon) "C" else "S"
-            val clsShort = TimetableCalculator.compactClassName(p.className)
-            FilterChip(
-                selected = isSelected,
-                onClick = { onSelectSlot(p.slotId) },
-                label = { Text("${p.day} $sesShort.T${p.period} · $clsShort") },
-                modifier = Modifier.testTag("swap_period_chip_${p.slotId}")
-            )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
     val targetCls = TimetableCalculator.compactClassName(selectedPeriod.className)
-    val targetSessionLabel = if (selectedPeriod.isAfternoon) "Chiều" else "Sáng"
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.SwapHoriz,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Đang tìm người thay: ${selectedPeriod.day} $targetSessionLabel Tiết ${selectedPeriod.period}",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = "Lớp $targetCls • ${selectedPeriod.subjectName} (${selectedPeriod.timeRangeText})",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
-                )
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    OutlinedTextField(
-        value = searchQuery,
-        onValueChange = onSearchChange,
-        placeholder = { Text("Lọc tên giáo viên hoặc tổ chuyên môn...") },
-        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-        singleLine = true,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth()
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
+    val targetSessionShort = if (selectedPeriod.isAfternoon) "Chiều" else "Sáng T${selectedPeriod.period}"
 
     val suggestions = remember(
         selectedPeriod,
@@ -738,16 +676,112 @@ private fun SwapSubstituteLookupContent(
     val priorityCount = suggestions.count { it.priorityScore > 0 }
 
     LazyColumn(
-        contentPadding = PaddingValues(bottom = 24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("swap_unified_list"),
+        contentPadding = PaddingValues(bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Text(
-                text = "2. Gợi ý ${suggestions.size} giáo viên trống tiết ($priorityCount ưu tiên cùng lớp/tổ):",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+        item(key = "swap_period_selector") {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "1. Chọn tiết của bạn cần đổi hoặc nhờ dạy thay:",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    myPeriods.forEach { p ->
+                        val isSelected = p.slotId == selectedPeriod.slotId
+                        val clsShort = TimetableCalculator.compactClassName(p.className)
+                        val chipLabel = if (p.isAfternoon) {
+                            "${p.day} Chiều · $clsShort"
+                        } else {
+                            "${p.day} S.T${p.period} · $clsShort"
+                        }
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onSelectSlot(p.slotId) },
+                            label = { Text(chipLabel) },
+                            modifier = Modifier.testTag("swap_period_chip_${p.slotId}")
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("swap_selected_summary")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SwapHoriz,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "⇄ Thay: ${selectedPeriod.day} $targetSessionShort · $targetCls (${selectedPeriod.subjectName} · ${selectedPeriod.timeRangeText})",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
+        stickyHeader(key = "swap_search_sticky") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(top = 2.dp, bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
+                    placeholder = {
+                        Text(
+                            text = "Lọc tên giáo viên hoặc tổ chuyên môn...",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "2. Gợi ý ${suggestions.size} giáo viên trống tiết ($priorityCount ưu tiên cùng lớp/tổ):",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         items(suggestions, key = { "swap_${it.teacher.id}" }) { item ->
@@ -785,7 +819,7 @@ private fun SubstituteSuggestionCard(
             .fillMaxWidth()
             .testTag("swap_suggestion_${suggestion.teacher.id}")
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

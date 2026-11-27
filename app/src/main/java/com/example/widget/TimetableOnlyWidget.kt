@@ -263,7 +263,7 @@ private fun ModernTimetableRow(
     val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
     val isPast = period.liveStatus == PeriodLiveStatus.PAST
 
-    val baseTag = if (period.isAfternoon) "C${period.period}" else "T${period.period}"
+    val baseTag = if (period.isAfternoon) "Chiều" else "T${period.period}"
     val tagText = when {
         isNow -> "● $baseTag"
         isPast -> "✓ $baseTag"
@@ -305,7 +305,7 @@ private fun ModernTimetableRow(
         isPast -> palette.mutedPastText
         else -> palette.secondaryText
     }
-    val tagColWidth = (38f * data.fontScale.coerceAtLeast(1f)).dp
+    val tagColWidth = ((if (data.afternoonPeriods.isNotEmpty()) 48f else 38f) * data.fontScale.coerceAtLeast(1f)).dp
 
     Row(
         modifier = GlanceModifier

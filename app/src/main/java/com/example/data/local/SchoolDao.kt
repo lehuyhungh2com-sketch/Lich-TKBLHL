@@ -105,6 +105,9 @@ interface SchoolDao {
     @Query("SELECT * FROM timetable_slots WHERE week = :week")
     fun observeSlotsForWeek(week: Int): Flow<List<TimetableSlotEntity>>
 
+    @Query("SELECT * FROM timetable_slots WHERE week IN (:weeks)")
+    fun observeSlotsForWeeks(weeks: List<Int>): Flow<List<TimetableSlotEntity>>
+
     @Query("SELECT * FROM timetable_slots WHERE week = :week")
     suspend fun getSlotsForWeek(week: Int): List<TimetableSlotEntity>
 

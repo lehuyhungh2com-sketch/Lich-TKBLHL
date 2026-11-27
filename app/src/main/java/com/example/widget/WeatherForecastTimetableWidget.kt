@@ -542,7 +542,7 @@ private fun TimetableGridTile(
     val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
     val isPast = period.liveStatus == PeriodLiveStatus.PAST
 
-    val baseTag = if (period.isAfternoon) "C${period.period}" else "T${period.period}"
+    val baseTag = if (period.isAfternoon) "Chiều" else "T${period.period}"
     val periodLabel = when {
         isNow -> "● $baseTag"
         isPast -> "✓ $baseTag"

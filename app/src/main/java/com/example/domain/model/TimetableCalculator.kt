@@ -10,6 +10,26 @@ object TimetableCalculator {
     const val MAX_WEEK = 35
     val SCHOOL_DAYS = listOf("T2", "T3", "T4", "T5", "T6", "T7")
 
+    val AFTERNOON_MONTH_CYCLES: List<AfternoonMonthCycle> = listOf(
+        AfternoonMonthCycle(month = 9, weeks = listOf(1, 2, 3, 4)),
+        AfternoonMonthCycle(month = 10, weeks = listOf(5, 6, 7, 8)),
+        AfternoonMonthCycle(month = 11, weeks = listOf(9, 10, 11, 12)),
+        AfternoonMonthCycle(month = 12, weeks = listOf(13, 14, 15, 16)),
+        AfternoonMonthCycle(month = 1, weeks = listOf(17, 18, 19, 20))
+    )
+
+    fun getAfternoonMonthCycle(weekNumber: Int): AfternoonMonthCycle {
+        val safeWeek = weekNumber.coerceAtLeast(MIN_WEEK)
+        AFTERNOON_MONTH_CYCLES.firstOrNull { safeWeek in it.weeks }?.let { return it }
+        val groupIndex = (safeWeek - 1) / 4
+        val startWeek = groupIndex * 4 + 1
+        val month = ((8 + groupIndex) % 12) + 1
+        return AfternoonMonthCycle(
+            month = month,
+            weeks = listOf(startWeek, startWeek + 1, startWeek + 2, startWeek + 3)
+        )
+    }
+
     /**
      * Exact business rule matching the web version:
      * - Base startDate from schools/thcs_lehuulap (default "2026-09-07").
@@ -239,11 +259,22 @@ object TimetableCalculator {
                 subjectId = slot.subjectId,
                 subjectName = subject?.name,
                 subjectCode = subject?.code,
-                customLabel = slot.customLabel
+                customLabel = slot.customLabel,
+                session = session
             )
             val resolvedSubjectShort = resolvedSubjectName
             val resolvedRoom = slot.room?.takeIf { it.isNotBlank() }
                 ?: schoolClass?.room.orEmpty()
+            val hasAfternoonOverride = session == "afternoon" &&
+                !subject?.afternoonTeacherOverride?.get(slot.classId).isNullOrBlank()
+            val hideAfternoonTeacher = session == "afternoon" &&
+                isClubOrHsgActivity(
+                    subjectId = slot.subjectId,
+                    subjectCode = subject?.code,
+                    subjectName = subject?.name,
+                    resolvedName = resolvedSubjectName
+                ) &&
+                !hasAfternoonOverride
 
             ResolvedPeriod(
                 slotId = slot.id,
@@ -262,7 +293,8 @@ object TimetableCalculator {
                 note = slot.note?.takeIf { it.isNotBlank() },
                 customLabel = slot.customLabel?.takeIf { it.isNotBlank() },
                 startTime = start,
-                endTime = end
+                endTime = end,
+                hideAfternoonTeacher = hideAfternoonTeacher
             )
         }.sortedWith(
             compareBy<ResolvedPeriod>(
@@ -305,16 +337,51 @@ object TimetableCalculator {
         }
     }
 
+    fun isClubOrHsgActivity(
+        subjectId: String,
+        subjectCode: String? = null,
+        subjectName: String? = null,
+        resolvedName: String? = null
+    ): Boolean {
+        val idLower = subjectId.trim().lowercase()
+        val codeLower = subjectCode?.trim()?.lowercase().orEmpty()
+        val nameLower = subjectName?.trim()?.lowercase().orEmpty()
+        val resolvedLower = resolvedName?.trim()?.lowercase().orEmpty()
+        return idLower in setOf("sub-clb", "sub-club", "clb", "shclb", "sub-bdhsg", "bdhsg") ||
+            idLower.startsWith("clb-") ||
+            idLower.startsWith("sub-clb-") ||
+            idLower.contains("clb") ||
+            idLower.contains("club") ||
+            idLower.contains("bdhsg") ||
+            codeLower.contains("clb") ||
+            codeLower.contains("shclb") ||
+            codeLower.contains("bdhsg") ||
+            nameLower.contains("clb") ||
+            nameLower.contains("shclb") ||
+            nameLower.contains("câu lạc bộ") ||
+            nameLower.contains("bồi dưỡng hsg") ||
+            resolvedLower.contains("clb") ||
+            resolvedLower.contains("bồi dưỡng hsg")
+    }
+
     /**
-     * Style 1 clean Vietnamese subject names (replaces technical codes like "LS&ĐL-SU", "KHTN-LY"):
+     * Style 1 clean Vietnamese subject names (replaces technical codes like "LS&ĐL-SU", "KHTN-LY"),
+     * and enforces afternoon club/HSG naming (never "Sinh hoạt lớp" in the afternoon).
      */
     fun readableSubjectName(
         subjectId: String,
         subjectName: String?,
         subjectCode: String?,
-        customLabel: String? = null
+        customLabel: String? = null,
+        session: String = "morning"
     ): String {
         if (!customLabel.isNullOrBlank()) return customLabel.trim()
+
+        val idTrimmed = subjectId.trim()
+        val idLower = idTrimmed.lowercase()
+        val codeLower = subjectCode?.trim()?.lowercase().orEmpty()
+        val nameLower = subjectName?.trim()?.lowercase().orEmpty()
+        val isAfternoon = session == "afternoon"
 
         val rawCombined = listOfNotNull(subjectId, subjectCode, subjectName)
             .joinToString(" ")
@@ -325,9 +392,53 @@ object TimetableCalculator {
             .joinToString(" ")
             .lowercase()
 
+        // Specific prefix: CLB-... or sub-clb-... -> "SH CLB <SUFFIX>"
+        if (idLower.startsWith("sub-clb-")) {
+            val suffix = idTrimmed.substring(8).trim().uppercase()
+            return if (suffix.isNotEmpty()) "SH CLB $suffix" else "Sinh hoạt CLB"
+        }
+        if (idLower.startsWith("clb-")) {
+            val suffix = idTrimmed.substring(4).trim().uppercase()
+            return if (suffix.isNotEmpty()) "SH CLB $suffix" else "Sinh hoạt CLB"
+        }
+
+        // Generic CLB / SHCLB (check BEFORE Sinh hoạt lớp so "Sinh hoạt CLB" is never misclassified)
+        if (idLower in setOf("sub-clb", "sub-club", "clb", "shclb") ||
+            idLower.contains("clb") ||
+            idLower.contains("club") ||
+            codeLower.contains("clb") ||
+            codeLower.contains("shclb") ||
+            nameLower.contains("clb") ||
+            nameLower.contains("shclb") ||
+            nameLower.contains("câu lạc bộ")
+        ) {
+            return "Sinh hoạt CLB"
+        }
+
+        // Bồi dưỡng HSG
+        if (idLower == "sub-bdhsg" ||
+            idLower == "bdhsg" ||
+            idLower.contains("bdhsg") ||
+            codeLower.contains("bdhsg") ||
+            rawCombined.contains("bồi dưỡng hsg")
+        ) {
+            return "Bồi dưỡng HSG"
+        }
+
         return when {
             codeOrId.contains("chao-co") || rawCombined.contains("chào cờ") -> "Chào cờ"
-            codeOrId.contains("shl") || rawCombined.contains("sinh hoạt") -> "Sinh hoạt lớp"
+            !isAfternoon && (
+                idLower == "sub-shl" ||
+                    codeLower == "shl" ||
+                    codeOrId.contains("shl") ||
+                    rawCombined.contains("sinh hoạt lớp") ||
+                    rawCombined.contains("sinh hoạt")
+                ) -> "Sinh hoạt lớp"
+            isAfternoon && (
+                idLower == "sub-shl" ||
+                    codeLower == "shl" ||
+                    rawCombined.contains("sinh hoạt")
+                ) -> "Sinh hoạt CLB"
             codeOrId.contains("ls&đl-su") || codeOrId.contains("ls&dl-su") || codeOrId.contains("lsdl-su") ||
                 codeOrId.contains("sub-su") || codeOrId.endsWith("-su") ||
                 (rawCombined.contains("lịch sử") && !rawCombined.contains("địa")) ||
@@ -367,7 +478,7 @@ object TimetableCalculator {
 
     /**
      * Compact 1-line summary for Glance Widget & Notification, e.g.:
-     * "Sáng: T1 6A1 (Tin) · T3 7A2 (Tin) · T4 9A3 (Tin)"
+     * "Sáng: T1 6A1 (Tin) · T3 7A2 (Tin)" or "Chiều: 9A3 (Tin học)"
      */
     fun formatCompactSessionLine(
         sessionLabel: String,
@@ -376,10 +487,19 @@ object TimetableCalculator {
     ): String {
         if (periods.isEmpty()) return ""
         val items = periods.joinToString(" · ") { p ->
-            if (isHomeroomMode) {
-                "T${p.period} ${p.subjectShort} (${p.teacherShortName})"
+            if (p.isAfternoon) {
+                if (isHomeroomMode) {
+                    if (p.hideAfternoonTeacher || p.teacherShortName.isBlank()) p.subjectShort
+                    else "${p.subjectShort} (${p.teacherShortName})"
+                } else {
+                    "${compactClassName(p.className)} (${p.subjectShort})"
+                }
             } else {
-                "T${p.period} ${compactClassName(p.className)} (${p.subjectShort})"
+                if (isHomeroomMode) {
+                    "T${p.period} ${p.subjectShort} (${p.teacherShortName})"
+                } else {
+                    "T${p.period} ${compactClassName(p.className)} (${p.subjectShort})"
+                }
             }
         }
         return "$sessionLabel: $items"
@@ -402,7 +522,7 @@ object TimetableCalculator {
         }
         if (afternoon.isNotEmpty()) {
             val c = afternoon.joinToString(", ") {
-                "T${it.period} ${it.className} (${it.startTime.formatHHmm()} - ${it.subjectShort})"
+                "${it.className} (${it.startTime.formatHHmm()} - ${it.subjectShort})"
             }
             parts.add("Chiều: $c")
         }
@@ -543,7 +663,7 @@ object TimetableCalculator {
         val assignedBySubjectLabel = mutableMapOf<String, Int>()
         for (a in effectiveAssignments) {
             val sub = subjectsById[a.subjectId]
-            val label = readableSubjectName(a.subjectId, sub?.name, sub?.code, null)
+            val label = readableSubjectName(a.subjectId, sub?.name, sub?.code, null, session = a.session ?: "morning")
             assignedBySubjectLabel[label] = (assignedBySubjectLabel[label] ?: 0) + a.periodsPerWeek.coerceAtLeast(0)
         }
         val subjectLabels = (weekBySubject.keys + yearBySubject.keys + assignedBySubjectLabel.keys).toSet()
@@ -635,8 +755,11 @@ object TimetableCalculator {
                     pos != targetPos && pos !in requesterBusyPositions
                 }
                 val swapHint = directSwapSlot?.let { slot ->
-                    val ses = if (slot.isAfternoon) "Chiều" else "Sáng"
-                    "Đổi chéo: ${slot.day} $ses T${slot.period} (${slot.subjectShort})"
+                    if (slot.isAfternoon) {
+                        "Đổi chéo: ${slot.day} Chiều (${slot.subjectShort})"
+                    } else {
+                        "Đổi chéo: ${slot.day} Sáng T${slot.period} (${slot.subjectShort})"
+                    }
                 }
 
                 SubstituteSuggestion(

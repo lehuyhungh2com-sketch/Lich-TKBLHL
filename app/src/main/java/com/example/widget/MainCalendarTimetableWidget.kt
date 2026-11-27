@@ -502,7 +502,7 @@ private fun SamsungStylePeriodRow(
     val isNext = period.liveStatus == PeriodLiveStatus.NEXT_PERIOD
     val isPast = period.liveStatus == PeriodLiveStatus.PAST
 
-    val baseTag = if (period.isAfternoon) "C${period.period}" else "T${period.period}"
+    val baseTag = if (period.isAfternoon) "Chiều" else "T${period.period}"
     val periodTag = when {
         isNow -> "●$baseTag"
         isPast -> "✓$baseTag"
@@ -534,7 +534,7 @@ private fun SamsungStylePeriodRow(
             .padding(horizontal = 4.dp, vertical = verticalPadding)
         else -> GlanceModifier.padding(vertical = verticalPadding)
     }
-    val tagColWidth = (32f * data.fontScale.coerceAtLeast(1f)).dp
+    val tagColWidth = ((if (data.afternoonPeriods.isNotEmpty()) 44f else 32f) * data.fontScale.coerceAtLeast(1f)).dp
 
     Row(
         modifier = GlanceModifier

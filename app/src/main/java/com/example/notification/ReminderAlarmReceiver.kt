@@ -44,6 +44,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                         val startTime = intent.getStringExtra(AlarmScheduler.EXTRA_START_TIME).orEmpty()
                         val room = intent.getStringExtra(AlarmScheduler.EXTRA_ROOM).orEmpty()
                         val leadMinutes = intent.getIntExtra(AlarmScheduler.EXTRA_LEAD_MINUTES, 10)
+                        val isAfternoon = intent.getBooleanExtra(AlarmScheduler.EXTRA_IS_AFTERNOON, false)
                         NotificationHelper.showBeforePeriodNotification(
                             context = context,
                             periodNumber = period,
@@ -51,7 +52,8 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
                             subjectName = subjectName,
                             startTimeText = startTime,
                             room = room,
-                            leadMinutes = leadMinutes
+                            leadMinutes = leadMinutes,
+                            isAfternoon = isAfternoon
                         )
                         WidgetUpdater.updateAllWidgets(context)
                     }

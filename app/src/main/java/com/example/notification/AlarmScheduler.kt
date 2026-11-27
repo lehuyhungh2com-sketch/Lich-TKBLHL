@@ -29,6 +29,7 @@ object AlarmScheduler {
     const val EXTRA_START_TIME = "extra_start_time"
     const val EXTRA_ROOM = "extra_room"
     const val EXTRA_LEAD_MINUTES = "extra_lead_minutes"
+    const val EXTRA_IS_AFTERNOON = "extra_is_afternoon"
 
     private const val REQ_DAILY_REMINDER = 1001
     private const val REQ_PRE_SYNC = 1002
@@ -129,6 +130,7 @@ object AlarmScheduler {
                     putExtra(EXTRA_START_TIME, period.startTime.formatHHmm())
                     putExtra(EXTRA_ROOM, period.room)
                     putExtra(EXTRA_LEAD_MINUTES, safeLead)
+                    putExtra(EXTRA_IS_AFTERNOON, period.isAfternoon)
                 }
                 setExactOrInexactAlarm(context, REQ_PERIOD_BASE + idx, cal.timeInMillis, intent)
             }
