@@ -858,6 +858,9 @@ fun TimetableScreen(
             schoolConfig = uiState.schoolConfig,
             weeks = uiState.weeks,
             afternoonCyclePeriods = effectiveCycleAfternoon,
+            schoolClasses = uiState.allClasses,
+            allSchoolClassPeriods = uiState.allSelectedWeekClassPeriods.ifEmpty { uiState.allSelectedWeekPeriods },
+            allSchoolCycleAfternoonPeriods = uiState.allSelectedCycleAfternoonPeriods,
             onDismiss = { showExportSheet = false },
             onNotify = onNotify
         )

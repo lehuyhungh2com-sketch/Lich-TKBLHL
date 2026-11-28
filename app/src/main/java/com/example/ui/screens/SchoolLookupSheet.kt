@@ -113,6 +113,7 @@ fun SchoolLookupSheet(
     var swapSearchQuery by remember { mutableStateOf("") }
     var selectedSwapSlotId by remember(initialSwapSlotId) { mutableStateOf(initialSwapSlotId) }
     var pendingExportClass by remember { mutableStateOf<Pair<SchoolClass, List<ResolvedPeriod>>?>(null) }
+    var pendingExportWholeSchool by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -177,6 +178,16 @@ fun SchoolLookupSheet(
                         } else {
                             pendingExportClass = cls to periods
                         }
+                    },
+                    onShareWholeSchool = {
+                        val hasSchoolData = uiState.allSelectedWeekClassPeriods.isNotEmpty() ||
+                            uiState.allSelectedWeekPeriods.isNotEmpty() ||
+                            uiState.allSelectedCycleAfternoonPeriods.isNotEmpty()
+                        if (!hasSchoolData) {
+                            onNotify("Chưa có dữ liệu TKB toàn trường để xuất ảnh. Vui lòng đồng bộ trước.")
+                        } else {
+                            pendingExportWholeSchool = true
+                        }
                     }
                 )
 
@@ -224,7 +235,37 @@ fun SchoolLookupSheet(
             schoolConfig = uiState.schoolConfig,
             weeks = uiState.weeks,
             afternoonCyclePeriods = classCycleAfternoon,
+            schoolClasses = uiState.allClasses,
+            allSchoolClassPeriods = uiState.allSelectedWeekClassPeriods.ifEmpty { uiState.allSelectedWeekPeriods },
+            allSchoolCycleAfternoonPeriods = uiState.allSelectedCycleAfternoonPeriods,
+            initialWholeSchool = false,
             onDismiss = { pendingExportClass = null },
+            onNotify = onNotify
+        )
+    }
+
+    if (pendingExportWholeSchool) {
+        val (ws, we) = TimetableCalculator.getWeekDateRange(
+            weekNumber = uiState.selectedWeekNumber,
+            schoolConfig = uiState.schoolConfig,
+            weeks = uiState.weeks
+        )
+        TimetableExportSheet(
+            title = "TKB Toàn trường",
+            subtitle = uiState.schoolConfig.name,
+            weekLabel = "Tuần ${uiState.selectedWeekNumber}",
+            dateRange = "${ws.formatDayMonth()} – ${we.formatDayMonth()}/${we.year}",
+            periods = uiState.selectedWeekPeriods,
+            showTeacher = true,
+            selectedWeekNumber = uiState.selectedWeekNumber,
+            schoolConfig = uiState.schoolConfig,
+            weeks = uiState.weeks,
+            afternoonCyclePeriods = uiState.selectedCycleAfternoonPeriods,
+            schoolClasses = uiState.allClasses,
+            allSchoolClassPeriods = uiState.allSelectedWeekClassPeriods.ifEmpty { uiState.allSelectedWeekPeriods },
+            allSchoolCycleAfternoonPeriods = uiState.allSelectedCycleAfternoonPeriods,
+            initialWholeSchool = true,
+            onDismiss = { pendingExportWholeSchool = false },
             onNotify = onNotify
         )
     }
@@ -235,7 +276,8 @@ private fun ClassTimetableLookupContent(
     uiState: MainUiState,
     selectedClassId: String,
     onSelectClass: (String) -> Unit,
-    onShareClass: (SchoolClass, List<ResolvedPeriod>) -> Unit
+    onShareClass: (SchoolClass, List<ResolvedPeriod>) -> Unit,
+    onShareWholeSchool: () -> Unit
 ) {
     val classes = uiState.allClasses
     val selectedClass = classes.firstOrNull { it.id == selectedClassId } ?: classes.firstOrNull()
@@ -305,15 +347,50 @@ private fun ClassTimetableLookupContent(
                 }
             }
 
-            IconButton(
-                onClick = { onShareClass(selectedClass, classPeriods) },
-                modifier = Modifier.testTag("lookup_share_class_button")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Share,
-                    contentDescription = "Chia sẻ ảnh TKB lớp",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onShareWholeSchool() }
+                        .testTag("lookup_share_school_button")
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Share,
+                            contentDescription = "Xuất ảnh TKB Toàn trường",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Toàn trường",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = { onShareClass(selectedClass, classPeriods) },
+                    modifier = Modifier.testTag("lookup_share_class_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Share,
+                        contentDescription = "Chia sẻ ảnh TKB lớp",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

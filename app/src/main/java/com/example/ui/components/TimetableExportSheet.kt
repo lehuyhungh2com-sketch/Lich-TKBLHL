@@ -57,8 +57,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.ResolvedPeriod
+import com.example.domain.model.SchoolClass
 import com.example.domain.model.SchoolConfig
+import com.example.domain.model.TimetableCalculator
 import com.example.domain.model.WeekInfo
+import com.example.util.SchoolWideShareScope
+import com.example.util.SchoolWideTimetableRenderer
 import com.example.util.TimetableShareHelper
 import com.example.util.TimetableShareScope
 
@@ -76,12 +80,36 @@ fun TimetableExportSheet(
     schoolConfig: SchoolConfig = SchoolConfig(),
     weeks: List<WeekInfo> = emptyList(),
     afternoonCyclePeriods: List<ResolvedPeriod>? = null,
+    schoolClasses: List<SchoolClass> = emptyList(),
+    allSchoolClassPeriods: List<ResolvedPeriod> = emptyList(),
+    allSchoolCycleAfternoonPeriods: List<ResolvedPeriod> = emptyList(),
+    initialWholeSchool: Boolean = false,
     onDismiss: () -> Unit,
     onNotify: (String) -> Unit
 ) {
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val canExportWholeSchool = schoolClasses.isNotEmpty() ||
+        allSchoolClassPeriods.isNotEmpty() ||
+        allSchoolCycleAfternoonPeriods.isNotEmpty()
+
+    var isWholeSchoolMode by remember(initialWholeSchool, canExportWholeSchool) {
+        mutableStateOf(initialWholeSchool && canExportWholeSchool)
+    }
     var selectedScope by remember(initialScope) { mutableStateOf(initialScope) }
+    var selectedSchoolScope by remember(initialScope) {
+        mutableStateOf(
+            if (initialScope == TimetableShareScope.AFTERNOON) {
+                SchoolWideShareScope.AFTERNOON
+            } else {
+                SchoolWideShareScope.MORNING
+            }
+        )
+    }
+
+    val cycle = remember(selectedWeekNumber) {
+        TimetableCalculator.getAfternoonMonthCycle(selectedWeekNumber)
+    }
 
     val effectiveAfternoon = remember(periods, afternoonCyclePeriods) {
         (afternoonCyclePeriods ?: periods.filter { it.isAfternoon }).filter { it.isAfternoon }
@@ -90,13 +118,36 @@ fun TimetableExportSheet(
     val afternoonCount = effectiveAfternoon.size
     val allCount = morningCount + afternoonCount
 
-    val hasScopedData = when (selectedScope) {
-        TimetableShareScope.FULL_DAY -> morningCount > 0 || afternoonCount > 0
-        TimetableShareScope.MORNING -> morningCount > 0
-        TimetableShareScope.AFTERNOON -> afternoonCount > 0
+    val schoolMorningPeriods = remember(allSchoolClassPeriods) {
+        allSchoolClassPeriods.filter { !it.isAfternoon }
+    }
+    val schoolAfternoonPeriods = remember(allSchoolCycleAfternoonPeriods, allSchoolClassPeriods) {
+        allSchoolCycleAfternoonPeriods.ifEmpty {
+            allSchoolClassPeriods.filter { it.isAfternoon }
+        }.filter { it.isAfternoon }
+    }
+    val sortedSchoolClasses = remember(schoolClasses, schoolMorningPeriods, schoolAfternoonPeriods) {
+        SchoolWideTimetableRenderer.sortSchoolClasses(
+            classes = schoolClasses,
+            fallbackPeriods = schoolMorningPeriods + schoolAfternoonPeriods
+        )
+    }
+
+    val hasScopedData = if (isWholeSchoolMode) {
+        when (selectedSchoolScope) {
+            SchoolWideShareScope.MORNING -> schoolMorningPeriods.isNotEmpty()
+            SchoolWideShareScope.AFTERNOON -> schoolAfternoonPeriods.isNotEmpty()
+        }
+    } else {
+        when (selectedScope) {
+            TimetableShareScope.FULL_DAY -> morningCount > 0 || afternoonCount > 0
+            TimetableShareScope.MORNING -> morningCount > 0
+            TimetableShareScope.AFTERNOON -> afternoonCount > 0
+        }
     }
 
     val previewBitmap: Bitmap? = remember(
+        isWholeSchoolMode,
         title,
         subtitle,
         weekLabel,
@@ -105,38 +156,30 @@ fun TimetableExportSheet(
         effectiveAfternoon,
         showTeacher,
         selectedScope,
+        selectedSchoolScope,
         selectedWeekNumber,
         schoolConfig,
-        weeks
+        weeks,
+        sortedSchoolClasses,
+        schoolMorningPeriods,
+        schoolAfternoonPeriods
     ) {
-        if (!hasScopedData) null
-        else TimetableShareHelper.renderWeeklyTimetableBitmap(
-            title = title,
-            subtitle = subtitle,
-            weekLabel = weekLabel,
-            dateRange = dateRange,
-            periods = periods,
-            showTeacher = showTeacher,
-            scope = selectedScope,
-            selectedWeekNumber = selectedWeekNumber,
-            schoolConfig = schoolConfig,
-            weeks = weeks,
-            afternoonPeriods = effectiveAfternoon
-        )
-    }
-
-    fun notifyUser(message: String) {
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-        onNotify(message)
-    }
-
-    val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("image/png")
-    ) { uri ->
-        if (uri != null) {
-            val ok = TimetableShareHelper.writeWeeklyTimetableToUri(
-                context = context,
-                uri = uri,
+        if (!hasScopedData) {
+            null
+        } else if (isWholeSchoolMode) {
+            val fullRes = SchoolWideTimetableRenderer.renderSchoolWideTimetableBitmap(
+                classes = sortedSchoolClasses,
+                morningPeriods = schoolMorningPeriods,
+                afternoonCyclePeriods = schoolAfternoonPeriods,
+                scope = selectedSchoolScope,
+                selectedWeekNumber = selectedWeekNumber,
+                dateRange = dateRange,
+                schoolConfig = schoolConfig,
+                weeks = weeks
+            )
+            TimetableShareHelper.createScaledPreview(fullRes, maxWidth = 1240)
+        } else {
+            TimetableShareHelper.renderWeeklyTimetableBitmap(
                 title = title,
                 subtitle = subtitle,
                 weekLabel = weekLabel,
@@ -149,8 +192,51 @@ fun TimetableExportSheet(
                 weeks = weeks,
                 afternoonPeriods = effectiveAfternoon
             )
+        }
+    }
+
+    fun notifyUser(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        onNotify(message)
+    }
+
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("image/png")
+    ) { uri ->
+        if (uri != null) {
+            val ok = if (isWholeSchoolMode) {
+                SchoolWideTimetableRenderer.writeSchoolWideTimetableToUri(
+                    context = context,
+                    uri = uri,
+                    classes = sortedSchoolClasses,
+                    morningPeriods = schoolMorningPeriods,
+                    afternoonCyclePeriods = schoolAfternoonPeriods,
+                    scope = selectedSchoolScope,
+                    selectedWeekNumber = selectedWeekNumber,
+                    dateRange = dateRange,
+                    schoolConfig = schoolConfig,
+                    weeks = weeks
+                )
+            } else {
+                TimetableShareHelper.writeWeeklyTimetableToUri(
+                    context = context,
+                    uri = uri,
+                    title = title,
+                    subtitle = subtitle,
+                    weekLabel = weekLabel,
+                    dateRange = dateRange,
+                    periods = periods,
+                    showTeacher = showTeacher,
+                    scope = selectedScope,
+                    selectedWeekNumber = selectedWeekNumber,
+                    schoolConfig = schoolConfig,
+                    weeks = weeks,
+                    afternoonPeriods = effectiveAfternoon
+                )
+            }
+            val labelText = if (isWholeSchoolMode) "TKB Toàn trường (${selectedSchoolScope.label})" else selectedScope.label
             notifyUser(
-                if (ok) "Đã tải ảnh ${selectedScope.label} về máy."
+                if (ok) "Đã lưu ảnh $labelText về máy."
                 else "Không thể lưu ảnh vào vị trí đã chọn."
             )
             if (ok) onDismiss()
@@ -186,12 +272,16 @@ fun TimetableExportSheet(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "Gửi hoặc tải ảnh TKB",
+                            text = "Xuất ảnh PNG & Chia sẻ",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "$title • $weekLabel ($dateRange)",
+                            text = if (isWholeSchoolMode) {
+                                "TKB Toàn trường (${sortedSchoolClasses.size} lớp) • $weekLabel"
+                            } else {
+                                "$title • $weekLabel ($dateRange)"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -204,76 +294,169 @@ fun TimetableExportSheet(
                 }
             }
 
+            if (canExportWholeSchool) {
+                Spacer(modifier = Modifier.height(10.dp))
+                SegmentedOptionBar(
+                    options = listOf(
+                        SegmentOption(false, "TKB đang xem", "export_mode_single"),
+                        SegmentOption(true, "TKB Toàn trường", "export_mode_school")
+                    ),
+                    selected = isWholeSchoolMode,
+                    onSelect = { isWholeSchoolMode = it }
+                )
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Chọn phần Thời khóa biểu muốn xuất",
+                text = if (isWholeSchoolMode) {
+                    "Chọn buổi xuất ảnh TKB Toàn trường (độ phân giải cao ~2800px):"
+                } else {
+                    "Chọn phần Thời khóa biểu muốn xuất:"
+                },
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val options = listOf(
-                    Triple(TimetableShareScope.FULL_DAY, allCount, "export_scope_all"),
-                    Triple(TimetableShareScope.MORNING, morningCount, "export_scope_morning"),
-                    Triple(TimetableShareScope.AFTERNOON, afternoonCount, "export_scope_afternoon")
-                )
-                options.forEach { (scope, count, tag) ->
-                    val isSelected = selectedScope == scope
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                        },
-                        border = BorderStroke(
-                            width = if (isSelected) 1.5.dp else 1.dp,
+            if (isWholeSchoolMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val schoolOptions = listOf(
+                        Triple(
+                            SchoolWideShareScope.MORNING,
+                            "Buổi Sáng (Tuần $selectedWeekNumber)",
+                            "${sortedSchoolClasses.size} lớp • ${schoolMorningPeriods.size} tiết"
+                        ) to "export_school_morning",
+                        Triple(
+                            SchoolWideShareScope.AFTERNOON,
+                            "Buổi Chiều (Tháng ${cycle.month})",
+                            "4 tuần: ${cycle.weeks.joinToString(", ")}"
+                        ) to "export_school_afternoon"
+                    )
+                    schoolOptions.forEach { (info, tag) ->
+                        val (scope, headline, sub) = info
+                        val isSelected = selectedSchoolScope == scope
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
                             color = if (isSelected) {
-                                MaterialTheme.colorScheme.primary
+                                MaterialTheme.colorScheme.primaryContainer
                             } else {
-                                MaterialTheme.colorScheme.outlineVariant
-                            }
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable { selectedScope = scope }
-                            .testTag(tag)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = scope.label,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "$count tiết",
-                                style = MaterialTheme.typography.labelSmall,
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                            },
+                            border = BorderStroke(
+                                width = if (isSelected) 1.5.dp else 1.dp,
                                 color = if (isSelected) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                maxLines = 1
-                            )
+                                    MaterialTheme.colorScheme.outlineVariant
+                                }
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedSchoolScope = scope }
+                                .testTag(tag)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = headline,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = sub,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val options = listOf(
+                        Triple(TimetableShareScope.FULL_DAY, allCount, "export_scope_all"),
+                        Triple(TimetableShareScope.MORNING, morningCount, "export_scope_morning"),
+                        Triple(TimetableShareScope.AFTERNOON, afternoonCount, "export_scope_afternoon")
+                    )
+                    options.forEach { (scope, count, tag) ->
+                        val isSelected = selectedScope == scope
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                            },
+                            border = BorderStroke(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                }
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedScope = scope }
+                                .testTag(tag)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = scope.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "$count tiết",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }
@@ -291,7 +474,11 @@ fun TimetableExportSheet(
                     val ratio = previewBitmap.width.toFloat() / previewBitmap.height.coerceAtLeast(1).toFloat()
                     Image(
                         bitmap = previewBitmap.asImageBitmap(),
-                        contentDescription = "Xem trước ảnh ${selectedScope.label}",
+                        contentDescription = if (isWholeSchoolMode) {
+                            "Xem trước ảnh TKB Toàn trường ${selectedSchoolScope.label}"
+                        } else {
+                            "Xem trước ảnh ${selectedScope.label}"
+                        },
                         contentScale = ContentScale.FillWidth,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -310,7 +497,11 @@ fun TimetableExportSheet(
                         .padding(vertical = 28.dp, horizontal = 16.dp)
                 ) {
                     Text(
-                        text = "Không có tiết học nào trong mục ${selectedScope.label} của $weekLabel.",
+                        text = if (isWholeSchoolMode) {
+                            "Chưa có dữ liệu TKB Toàn trường (${selectedSchoolScope.label}) trong $weekLabel."
+                        } else {
+                            "Không có tiết học nào trong mục ${selectedScope.label} của $weekLabel."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -327,29 +518,51 @@ fun TimetableExportSheet(
                 OutlinedButton(
                     onClick = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            val ok = TimetableShareHelper.saveWeeklyTimetableToGallery(
-                                context = context,
-                                title = title,
-                                subtitle = subtitle,
-                                weekLabel = weekLabel,
-                                dateRange = dateRange,
-                                periods = periods,
-                                showTeacher = showTeacher,
-                                scope = selectedScope,
-                                selectedWeekNumber = selectedWeekNumber,
-                                schoolConfig = schoolConfig,
-                                weeks = weeks,
-                                afternoonPeriods = effectiveAfternoon
-                            )
+                            val ok = if (isWholeSchoolMode) {
+                                SchoolWideTimetableRenderer.saveSchoolWideTimetableToGallery(
+                                    context = context,
+                                    classes = sortedSchoolClasses,
+                                    morningPeriods = schoolMorningPeriods,
+                                    afternoonCyclePeriods = schoolAfternoonPeriods,
+                                    scope = selectedSchoolScope,
+                                    selectedWeekNumber = selectedWeekNumber,
+                                    dateRange = dateRange,
+                                    schoolConfig = schoolConfig,
+                                    weeks = weeks
+                                )
+                            } else {
+                                TimetableShareHelper.saveWeeklyTimetableToGallery(
+                                    context = context,
+                                    title = title,
+                                    subtitle = subtitle,
+                                    weekLabel = weekLabel,
+                                    dateRange = dateRange,
+                                    periods = periods,
+                                    showTeacher = showTeacher,
+                                    scope = selectedScope,
+                                    selectedWeekNumber = selectedWeekNumber,
+                                    schoolConfig = schoolConfig,
+                                    weeks = weeks,
+                                    afternoonPeriods = effectiveAfternoon
+                                )
+                            }
+                            val labelText = if (isWholeSchoolMode) {
+                                "TKB Toàn trường (${selectedSchoolScope.label})"
+                            } else {
+                                selectedScope.label
+                            }
                             notifyUser(
-                                if (ok) "Đã lưu ảnh ${selectedScope.label} vào Thư viện (Pictures/TKB_LeHuuLap)."
-                                else "Không thể tải ảnh về máy lúc này."
+                                if (ok) "Đã lưu ảnh $labelText vào Pictures/${TimetableShareHelper.GALLERY_SUBFOLDER}."
+                                else "Không thể lưu ảnh vào máy lúc này."
                             )
                             if (ok) onDismiss()
                         } else {
-                            createDocumentLauncher.launch(
+                            val suggested = if (isWholeSchoolMode) {
+                                SchoolWideTimetableRenderer.suggestedFileName(selectedWeekNumber, selectedSchoolScope)
+                            } else {
                                 TimetableShareHelper.suggestedFileName(weekLabel, selectedScope)
-                            )
+                            }
+                            createDocumentLauncher.launch(suggested)
                         }
                     },
                     enabled = hasScopedData,
@@ -366,25 +579,39 @@ fun TimetableExportSheet(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Tải ảnh về máy", textAlign = TextAlign.Center, maxLines = 2)
+                    Text("Lưu ảnh PNG vào máy", textAlign = TextAlign.Center, maxLines = 2)
                 }
 
                 Button(
                     onClick = {
-                        val ok = TimetableShareHelper.shareWeeklyTimetableImage(
-                            context = context,
-                            title = title,
-                            subtitle = subtitle,
-                            weekLabel = weekLabel,
-                            dateRange = dateRange,
-                            periods = periods,
-                            showTeacher = showTeacher,
-                            scope = selectedScope,
-                            selectedWeekNumber = selectedWeekNumber,
-                            schoolConfig = schoolConfig,
-                            weeks = weeks,
-                            afternoonPeriods = effectiveAfternoon
-                        )
+                        val ok = if (isWholeSchoolMode) {
+                            SchoolWideTimetableRenderer.shareSchoolWideTimetableImage(
+                                context = context,
+                                classes = sortedSchoolClasses,
+                                morningPeriods = schoolMorningPeriods,
+                                afternoonCyclePeriods = schoolAfternoonPeriods,
+                                scope = selectedSchoolScope,
+                                selectedWeekNumber = selectedWeekNumber,
+                                dateRange = dateRange,
+                                schoolConfig = schoolConfig,
+                                weeks = weeks
+                            )
+                        } else {
+                            TimetableShareHelper.shareWeeklyTimetableImage(
+                                context = context,
+                                title = title,
+                                subtitle = subtitle,
+                                weekLabel = weekLabel,
+                                dateRange = dateRange,
+                                periods = periods,
+                                showTeacher = showTeacher,
+                                scope = selectedScope,
+                                selectedWeekNumber = selectedWeekNumber,
+                                schoolConfig = schoolConfig,
+                                weeks = weeks,
+                                afternoonPeriods = effectiveAfternoon
+                            )
+                        }
                         if (!ok) {
                             notifyUser("Không thể tạo ảnh chia sẻ lúc này.")
                         } else {
@@ -405,7 +632,7 @@ fun TimetableExportSheet(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Gửi / Chia sẻ", textAlign = TextAlign.Center, maxLines = 2)
+                    Text("Chia sẻ ảnh (Zalo...)", textAlign = TextAlign.Center, maxLines = 2)
                 }
             }
         }

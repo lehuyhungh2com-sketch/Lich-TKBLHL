@@ -861,25 +861,29 @@ fun SettingsScreen(
                         liveFontScale <= 1.24f -> "Lớn"
                         else -> "Rất lớn"
                     }
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
                             text = "Cỡ chữ trên Widget",
                             style = MaterialTheme.typography.titleSmall
                         )
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = "$fontPct% ($fontDesc)",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                softWrap = false
                             )
                             if (fontPct != 100) {
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Surface(
                                     shape = RoundedCornerShape(999.dp),
                                     color = MaterialTheme.colorScheme.secondaryContainer,
@@ -894,8 +898,11 @@ fun SettingsScreen(
                                     Text(
                                         text = "Mặc định",
                                         style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
                                     )
                                 }
                             }
@@ -990,15 +997,8 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "Lịch & TKB Trường THCS Lê Hữu Lập • v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
                     Text(
                         text = "Phần mềm được phát triển bởi Lê Huy Hùng - Trường THCS Lê Hữu Lập",
                         style = MaterialTheme.typography.labelSmall,

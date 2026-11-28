@@ -129,11 +129,17 @@ class LhlBusinessLogicTest {
 
     @Test
     fun readableSubjectName_formatsCleanVietnameseNames() {
-        assertEquals("Lịch sử", TimetableCalculator.readableSubjectName("sub-su", "LS&ĐL-SU", "LS&ĐL-SU"))
-        assertEquals("Địa lí", TimetableCalculator.readableSubjectName("sub-dia", "LS&ĐL-DIA", "LS&ĐL-DIA"))
-        assertEquals("Vật lí", TimetableCalculator.readableSubjectName("sub-khtn-ly", "KHTN-LY", "KHTN-LY"))
-        assertEquals("Hóa học", TimetableCalculator.readableSubjectName("sub-khtn-hoa", "KHTN-HOA", "KHTN-HOA"))
-        assertEquals("Sinh học", TimetableCalculator.readableSubjectName("sub-khtn-sinh", "KHTN-SINH", "KHTN-SINH"))
+        assertEquals("LS&ĐL - Sử", TimetableCalculator.readableSubjectName("sub-su", "LS&ĐL-SU", "LS&ĐL-SU"))
+        assertEquals("LS&ĐL - Địa", TimetableCalculator.readableSubjectName("sub-dia", "LS&ĐL-DIA", "LS&ĐL-DIA"))
+        assertEquals("KHTN - Lý", TimetableCalculator.readableSubjectName("sub-khtn-ly", "KHTN-LY", "KHTN-LY"))
+        assertEquals("KHTN - Hóa", TimetableCalculator.readableSubjectName("sub-khtn-hoa", "KHTN-HOA", "KHTN-HOA"))
+        assertEquals("KHTN - Sinh", TimetableCalculator.readableSubjectName("sub-khtn-sinh", "KHTN-SINH", "KHTN-SINH"))
+        assertEquals("NT - Âm nhạc", TimetableCalculator.readableSubjectName("sub-am-nhac", "Âm nhạc", "AN"))
+        assertEquals("NT - Mỹ thuật", TimetableCalculator.readableSubjectName("sub-my-thuat", "Mỹ thuật", "MT"))
+        // Idempotent when already formatted in GDPT 2018 hyphenated style
+        assertEquals("KHTN - Lý", TimetableCalculator.readableSubjectName("sub-khtn-ly", "KHTN - Lý", "KHTN-LY"))
+        assertEquals("LS&ĐL - Sử", TimetableCalculator.readableSubjectName("sub-su", "LS&ĐL - Sử", "SU"))
+        assertEquals("NT - Âm nhạc", TimetableCalculator.readableSubjectName("sub-am-nhac", "NT - Âm nhạc", "AN"))
         assertEquals("Tin học", TimetableCalculator.readableSubjectName("sub-tin", "Tin học", "Tin"))
         assertEquals("7A2", TimetableCalculator.compactClassName("Lớp 7A2"))
     }
@@ -531,7 +537,7 @@ class LhlBusinessLogicTest {
         assertEquals(1, t2Row1.period)
         assertEquals("GDTC 2", t2Row1.subjectName)
         assertEquals(2, t2Row2.period)
-        assertEquals("Lịch sử 4", t2Row2.subjectName)
+        assertEquals("LS&ĐL - Sử 4", t2Row2.subjectName)
         assertEquals(3, t2Row3.period)
         assertEquals("HĐTN 1", t2Row3.subjectName)
         assertEquals(4, t2Row4.period)
@@ -581,5 +587,32 @@ class LhlBusinessLogicTest {
         assertEquals(3, chungResolved[0].period)
         assertEquals("Tin học", chungResolved[0].subjectName)
         assertEquals("08:45 – 09:30", chungResolved[0].timeRangeText)
+    }
+
+    @Test
+    fun schoolWideRenderer_sortsClassesFrom6A1To9A3AndBuildsFileNames() {
+        val unsorted = listOf(
+            SchoolClass(id = "9A3", name = "9A3", grade = 9),
+            SchoolClass(id = "6A2", name = "6A2", grade = 6),
+            SchoolClass(id = "8A1", name = "8A1", grade = 8),
+            SchoolClass(id = "6A1", name = "6A1", grade = 6),
+            SchoolClass(id = "7A3", name = "7A3", grade = 7),
+            SchoolClass(id = "9A1", name = "9A1", grade = 9)
+        )
+        val sorted = com.example.util.SchoolWideTimetableRenderer.sortSchoolClasses(unsorted, emptyList())
+        assertEquals(listOf("6A1", "6A2", "7A3", "8A1", "9A1", "9A3"), sorted.map { it.name })
+
+        val morningFile = com.example.util.SchoolWideTimetableRenderer.suggestedFileName(
+            12,
+            com.example.util.SchoolWideShareScope.MORNING
+        )
+        val afternoonFile = com.example.util.SchoolWideTimetableRenderer.suggestedFileName(
+            12,
+            com.example.util.SchoolWideShareScope.AFTERNOON
+        )
+        assertTrue(morningFile.startsWith("TKB_ToanTruong_BuoiSang_Tuan12_"))
+        assertTrue(morningFile.endsWith(".png"))
+        assertTrue(afternoonFile.startsWith("TKB_ToanTruong_BuoiChieu_Thang11_Tuan9-12_"))
+        assertTrue(afternoonFile.endsWith(".png"))
     }
 }

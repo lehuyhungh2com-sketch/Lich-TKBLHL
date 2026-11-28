@@ -118,6 +118,7 @@ class UpgradeFeaturesUiTest {
         composeRule.onNodeWithTag("settings_refresh_widgets_button").assertIsDisplayed()
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("settings_copyright_text"))
         composeRule.onNodeWithText("Phần mềm được phát triển bởi Lê Huy Hùng - Trường THCS Lê Hữu Lập").assertIsDisplayed()
+        composeRule.onNodeWithText("v3.1 (Build 3)", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -769,5 +770,158 @@ class UpgradeFeaturesUiTest {
         composeRule.onAllNodesWithText("GDTC 2").assertCountEquals(2)
         composeRule.onAllNodesWithText("GDTC 2").onLast().assertIsDisplayed()
         composeRule.onAllNodesWithText("HĐTN 1").onLast().assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsScreen_widgetFontResetChipDisplaysCleanlyWhenScaled() {
+        var resetScale: Float? = null
+        val scaledState = sampleUiState().copy(
+            preferences = sampleUiState().preferences.copy(widgetFontScale = 1.15f)
+        )
+        composeRule.setContent {
+            LhlTimetableTheme {
+                SettingsScreen(
+                    uiState = scaledState,
+                    onSyncNow = {},
+                    onUpdateAppTheme = {},
+                    onUpdateAccentPalette = {},
+                    onUpdateFontScale = {},
+                    onUpdateDensityMode = {},
+                    onUpdateDailyReminder = { _, _, _ -> },
+                    onTogglePeriodReminder = {},
+                    onUpdatePeriodLeadMinutes = {},
+                    onSendTestNotification = {},
+                    onToggleGpsLocation = {},
+                    onUpdateWidgetAppearance = { _, _, _, _, fontScale, _ -> resetScale = fontScale },
+                    onRefreshWidgetsNow = {},
+                    onLogout = {}
+                )
+            }
+        }
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("widget_font_reset_button"))
+        composeRule.onNodeWithText("Cỡ chữ trên Widget").assertIsDisplayed()
+        composeRule.onNodeWithText("115% (Lớn)").assertIsDisplayed()
+        composeRule.onNodeWithTag("widget_font_reset_button").assertIsDisplayed().performClick()
+        assertEquals(1.0f, resetScale)
+    }
+
+    @Test
+    fun schoolWideExport_displaysModeAndRendersHighResMorningAndAfternoonBitmaps() {
+        val classes = listOf(
+            com.example.domain.model.SchoolClass(id = "6A1", name = "6A1", grade = 6),
+            com.example.domain.model.SchoolClass(id = "6A2", name = "6A2", grade = 6),
+            com.example.domain.model.SchoolClass(id = "7A1", name = "7A1", grade = 7),
+            com.example.domain.model.SchoolClass(id = "8A1", name = "8A1", grade = 8),
+            com.example.domain.model.SchoolClass(id = "9A3", name = "9A3", grade = 9)
+        )
+        val morningSlot = com.example.domain.model.ResolvedPeriod(
+            slotId = "sw_m1",
+            week = 12,
+            day = "T2",
+            period = 2,
+            session = "morning",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-su",
+            subjectName = "LS&ĐL - Sử 3",
+            subjectShort = "LS&ĐL - Sử 3",
+            teacherId = "t1",
+            teacherShortName = "Thúy",
+            room = "P101",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(8, 0),
+            endTime = com.example.domain.lunar.VnTime(8, 45),
+            rawPeriod = 2,
+            actualPeriod = 3,
+            baseSubjectName = "LS&ĐL - Sử"
+        )
+        val satP5Slot = morningSlot.copy(
+            slotId = "sw_t7_5",
+            day = "T7",
+            period = 5,
+            subjectId = "sub-hdtn",
+            subjectName = "HĐTN 5",
+            rawPeriod = 5,
+            actualPeriod = 5,
+            baseSubjectName = "HĐTN"
+        )
+        val afternoonClub = morningSlot.copy(
+            slotId = "sw_a1",
+            week = 10,
+            day = "T3",
+            period = 3,
+            session = "afternoon",
+            subjectId = "sub-clb",
+            subjectName = "Sinh hoạt CLB",
+            teacherShortName = "Ẩn",
+            hideAfternoonTeacher = true
+        )
+        val state = sampleUiState().copy(
+            allClasses = classes,
+            selectedWeekNumber = 12,
+            selectedWeekPeriods = listOf(morningSlot),
+            allSelectedWeekClassPeriods = listOf(morningSlot),
+            allSelectedCycleAfternoonPeriods = listOf(afternoonClub)
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                TimetableScreen(
+                    uiState = state,
+                    onSelectWeek = {},
+                    onToggleHomeroom = {},
+                    onSyncNow = {},
+                    onSaveLessonNote = { _, _ -> },
+                    onDeleteLessonNote = {},
+                    onNotify = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("timetable_share_button").performClick()
+        composeRule.onNodeWithTag("export_mode_school").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("export_school_morning").assertIsDisplayed()
+        composeRule.onNodeWithTag("export_school_afternoon").assertIsDisplayed()
+        composeRule.onNodeWithText("Lưu ảnh PNG vào máy").assertIsDisplayed()
+        composeRule.onNodeWithText("Chia sẻ ảnh (Zalo...)").assertIsDisplayed()
+
+        // Verify high-resolution rendering (~2800px) & T7 dynamic 4-row vs 5-row height
+        val bmpNoSat5 = com.example.util.SchoolWideTimetableRenderer.renderSchoolWideTimetableBitmap(
+            classes = classes,
+            morningPeriods = listOf(morningSlot),
+            afternoonCyclePeriods = listOf(afternoonClub),
+            scope = com.example.util.SchoolWideShareScope.MORNING,
+            selectedWeekNumber = 12,
+            dateRange = "23/11 – 28/11/2026"
+        )
+        val bmpWithSat5 = com.example.util.SchoolWideTimetableRenderer.renderSchoolWideTimetableBitmap(
+            classes = classes,
+            morningPeriods = listOf(morningSlot, satP5Slot),
+            afternoonCyclePeriods = listOf(afternoonClub),
+            scope = com.example.util.SchoolWideShareScope.MORNING,
+            selectedWeekNumber = 12,
+            dateRange = "23/11 – 28/11/2026"
+        )
+        val bmpAfternoon = com.example.util.SchoolWideTimetableRenderer.renderSchoolWideTimetableBitmap(
+            classes = classes,
+            morningPeriods = listOf(morningSlot),
+            afternoonCyclePeriods = listOf(afternoonClub),
+            scope = com.example.util.SchoolWideShareScope.AFTERNOON,
+            selectedWeekNumber = 12,
+            dateRange = "23/11 – 28/11/2026"
+        )
+        org.junit.Assert.assertTrue(bmpNoSat5.width >= 2600)
+        org.junit.Assert.assertTrue(bmpWithSat5.height > bmpNoSat5.height)
+        org.junit.Assert.assertTrue(bmpAfternoon.width >= 2600)
+
+        val preview = com.example.util.TimetableShareHelper.createScaledPreview(bmpNoSat5, maxWidth = 1240)
+        org.junit.Assert.assertEquals(1240, preview.width)
+
+        preview.recycle()
+        bmpNoSat5.recycle()
+        bmpWithSat5.recycle()
+        bmpAfternoon.recycle()
     }
 }

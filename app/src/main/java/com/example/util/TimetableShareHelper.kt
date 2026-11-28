@@ -63,6 +63,19 @@ enum class TimetableShareScope(
  */
 object TimetableShareHelper {
 
+    const val GALLERY_SUBFOLDER = "TKB_THCS_LeHuuLap"
+
+    fun createScaledPreview(source: Bitmap, maxWidth: Int = 1240): Bitmap {
+        if (source.width <= maxWidth) return source
+        val scale = maxWidth.toFloat() / source.width.toFloat()
+        val targetH = (source.height * scale).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(source, maxWidth, targetH, true)
+        if (scaled !== source) {
+            source.recycle()
+        }
+        return scaled
+    }
+
     fun suggestedFileName(
         weekLabel: String,
         scope: TimetableShareScope
@@ -156,7 +169,7 @@ object TimetableShareHelper {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/TKB_LeHuuLap")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$GALLERY_SUBFOLDER")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
 

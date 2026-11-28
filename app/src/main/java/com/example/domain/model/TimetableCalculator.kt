@@ -473,23 +473,26 @@ object TimetableCalculator {
             codeOrId.contains("ls&đl-su") || codeOrId.contains("ls&dl-su") || codeOrId.contains("lsdl-su") ||
                 codeOrId.contains("sub-su") || codeOrId.endsWith("-su") ||
                 (rawCombined.contains("lịch sử") && !rawCombined.contains("địa")) ||
-                rawCombined.contains("(sử)") || rawCombined.contains("- sử") -> "Lịch sử"
+                rawCombined.contains("(sử)") || rawCombined.contains("- sử") -> "LS&ĐL - Sử"
             codeOrId.contains("ls&đl-dia") || codeOrId.contains("ls&dl-dia") || codeOrId.contains("lsdl-dia") ||
                 codeOrId.contains("sub-dia") || codeOrId.endsWith("-dia") ||
                 (rawCombined.contains("địa lí") && !rawCombined.contains("lịch sử")) ||
                 (rawCombined.contains("địa lý") && !rawCombined.contains("lịch sử")) ||
-                rawCombined.contains("(địa)") || rawCombined.contains("- địa") -> "Địa lí"
+                rawCombined.contains("(địa)") || rawCombined.contains("- địa") -> "LS&ĐL - Địa"
             codeOrId.contains("khtn-ly") || codeOrId.contains("khtn-lý") || codeOrId.contains("sub-ly") ||
                 rawCombined.contains("vật lí") || rawCombined.contains("vật lý") ||
-                rawCombined.contains("(lý)") || rawCombined.contains("(lí)") -> "Vật lí"
+                rawCombined.contains("(lý)") || rawCombined.contains("(lí)") ||
+                rawCombined.contains("- lý") || rawCombined.contains("- lí") -> "KHTN - Lý"
             codeOrId.contains("khtn-hoa") || codeOrId.contains("khtn-hóa") || codeOrId.contains("sub-hoa") ||
                 rawCombined.contains("hóa học") || rawCombined.contains("hoá học") ||
-                rawCombined.contains("(hóa)") || rawCombined.contains("(hoá)") -> "Hóa học"
+                rawCombined.contains("(hóa)") || rawCombined.contains("(hoá)") ||
+                rawCombined.contains("- hóa") || rawCombined.contains("- hoá") -> "KHTN - Hóa"
             codeOrId.contains("khtn-sinh") || codeOrId.contains("sub-sinh") ||
-                rawCombined.contains("sinh học") || rawCombined.contains("(sinh)") -> "Sinh học"
+                rawCombined.contains("sinh học") || rawCombined.contains("(sinh)") ||
+                rawCombined.contains("- sinh") -> "KHTN - Sinh"
             codeOrId.contains("khtn") || rawCombined.contains("khoa học tự nhiên") -> "KHTN"
             codeOrId.contains("ls&đl") || codeOrId.contains("ls&dl") || codeOrId.contains("lsdl") ||
-                (rawCombined.contains("lịch sử") && rawCombined.contains("địa")) -> "Lịch sử & Địa lí"
+                (rawCombined.contains("lịch sử") && rawCombined.contains("địa")) -> "LS&ĐL"
             codeOrId.contains("toan") || rawCombined.contains("toán") -> "Toán"
             codeOrId.contains("van") || rawCombined.contains("ngữ văn") -> "Ngữ văn"
             codeOrId.contains("anh") || rawCombined.contains("tiếng anh") || rawCombined.contains("ngoại ngữ") -> "Tiếng Anh"
@@ -497,8 +500,8 @@ object TimetableCalculator {
             codeOrId.contains("gdcd") || rawCombined.contains("giáo dục công dân") -> "GDCD"
             codeOrId.contains("cong-nghe") || codeOrId.contains("công nghệ") || subjectCode.equals("CN", ignoreCase = true) -> "Công nghệ"
             codeOrId.contains("gdtc") || rawCombined.contains("thể chất") || rawCombined.contains("thể dục") -> "GDTC"
-            codeOrId.contains("am-nhac") || rawCombined.contains("âm nhạc") || subjectCode.equals("AN", ignoreCase = true) -> "Âm nhạc"
-            codeOrId.contains("my-thuat") || rawCombined.contains("mỹ thuật") || rawCombined.contains("mĩ thuật") || subjectCode.equals("MT", ignoreCase = true) -> "Mỹ thuật"
+            codeOrId.contains("am-nhac") || rawCombined.contains("âm nhạc") || subjectCode.equals("AN", ignoreCase = true) -> "NT - Âm nhạc"
+            codeOrId.contains("my-thuat") || rawCombined.contains("mỹ thuật") || rawCombined.contains("mĩ thuật") || subjectCode.equals("MT", ignoreCase = true) -> "NT - Mỹ thuật"
             codeOrId.contains("hdtn") || rawCombined.contains("hđtn") || rawCombined.contains("trải nghiệm") -> "HĐTN"
             codeOrId.contains("gddp") || rawCombined.contains("gdđp") || rawCombined.contains("địa phương") -> "GDĐP"
             !subjectName.isNullOrBlank() -> subjectName.trim()
@@ -774,9 +777,13 @@ object TimetableCalculator {
                     requesterTeacher.department.isNotBlank() &&
                     candidate.department.equals(requesterTeacher.department, ignoreCase = true)
 
+                val candidateReadableSubject = if (candidate.mainSubject.isNotBlank()) {
+                    readableSubjectName(candidate.mainSubject, candidate.mainSubject, null)
+                } else ""
                 val sameSubject = candidate.mainSubject.isNotBlank() && (
                     (requesterTeacher?.mainSubject?.isNotBlank() == true &&
                         candidate.mainSubject.equals(requesterTeacher.mainSubject, ignoreCase = true)) ||
+                        targetPeriod.baseSubjectName.equals(candidateReadableSubject, ignoreCase = true) ||
                         targetPeriod.baseSubjectName.contains(candidate.mainSubject, ignoreCase = true) ||
                         candidate.mainSubject.contains(targetPeriod.baseSubjectName, ignoreCase = true)
                     )
