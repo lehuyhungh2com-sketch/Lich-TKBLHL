@@ -140,7 +140,9 @@ fun TodayScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            if (teacher != null && teacher.department.isNotBlank()) {
+                            if (teacher != null && teacher.department.isNotBlank() &&
+                                !teacher.department.contains("ban giám hiệu", ignoreCase = true)
+                            ) {
                                 Text(
                                     text = "• ${teacher.department}",
                                     style = MaterialTheme.typography.labelMedium,

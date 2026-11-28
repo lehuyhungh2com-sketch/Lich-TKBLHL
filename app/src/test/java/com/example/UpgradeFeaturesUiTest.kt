@@ -85,9 +85,11 @@ class UpgradeFeaturesUiTest {
             }
         }
 
-        // Verify v2.0 badge is visible at the top
+        // Verify v3.1 badge is visible at the top and role title is omitted
         composeRule.onNodeWithTag("settings_version_badge").assertIsDisplayed()
-        composeRule.onNodeWithText("Phiên bản 2.0").assertIsDisplayed()
+        composeRule.onNodeWithText("Phiên bản 3.1").assertIsDisplayed()
+        composeRule.onNodeWithText("Giáo viên").assertDoesNotExist()
+        composeRule.onNodeWithText("Ban Giám hiệu").assertDoesNotExist()
 
         // Scroll to & click Accent Palette swatch
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("accent_palette_emerald"))
@@ -109,11 +111,13 @@ class UpgradeFeaturesUiTest {
         composeRule.onNodeWithTag("period_lead_15").assertIsDisplayed().performClick()
         assertEquals(15, selectedLeadMinutes)
 
-        // Scroll to Widget Font Slider & Refresh controls
+        // Scroll to Widget Font Slider, Refresh & Copyright controls
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("widget_font_slider"))
         composeRule.onNodeWithTag("widget_font_slider").assertIsDisplayed()
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("settings_refresh_widgets_button"))
         composeRule.onNodeWithTag("settings_refresh_widgets_button").assertIsDisplayed()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("settings_copyright_text"))
+        composeRule.onNodeWithText("Phần mềm được phát triển bởi Lê Huy Hùng - Trường THCS Lê Hữu Lập").assertIsDisplayed()
     }
 
     @Test

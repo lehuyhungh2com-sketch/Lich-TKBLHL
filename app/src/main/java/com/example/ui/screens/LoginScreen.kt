@@ -358,6 +358,13 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Phần mềm được phát triển bởi Lê Huy Hùng - Trường THCS Lê Hữu Lập",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

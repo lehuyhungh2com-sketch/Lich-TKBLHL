@@ -228,34 +228,21 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!uiState.homeroomClassId.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val hcLabel = TimetableCalculator.compactClassName(
+                                uiState.homeroomClass?.name ?: uiState.homeroomClassId.orEmpty()
+                            )
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer
+                                color = MaterialTheme.colorScheme.secondaryContainer
                             ) {
                                 Text(
-                                    text = teacher.roleLabelVietnamese,
+                                    text = "GVCN $hcLabel",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
-                            }
-                            if (!uiState.homeroomClassId.isNullOrBlank()) {
-                                val hcLabel = TimetableCalculator.compactClassName(
-                                    uiState.homeroomClass?.name ?: uiState.homeroomClassId.orEmpty()
-                                )
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer
-                                ) {
-                                    Text(
-                                        text = "GVCN $hcLabel",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
                             }
                         }
                     }
@@ -1002,13 +989,23 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = "Lịch & TKB Trường THCS Lê Hữu Lập • v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Phần mềm được phát triển bởi Lê Huy Hùng - Trường THCS Lê Hữu Lập",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("settings_copyright_text")
                     )
                 }
             }
