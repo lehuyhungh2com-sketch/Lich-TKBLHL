@@ -40,7 +40,7 @@ interface GitHubReleasesApi {
     ): List<GitHubReleaseDto>
 
     companion object {
-        const val REPO_OWNER = "lehuyhung2com-sketch"
+        const val REPO_OWNER = "lehuyhungh2com-sketch"
         const val REPO_NAME = "Lich-TKBLHL"
         const val RELEASES_PAGE_URL = "https://github.com/$REPO_OWNER/$REPO_NAME/releases"
 

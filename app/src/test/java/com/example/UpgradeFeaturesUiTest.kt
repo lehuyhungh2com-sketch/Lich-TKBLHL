@@ -929,24 +929,24 @@ class UpgradeFeaturesUiTest {
     @Test
     fun updateBannerAndDialog_showVersionDiffAndChangelogBullets() {
         val updateInfo = com.example.data.repository.AppUpdateInfo(
-            versionCode = 6,
-            versionName = "3.4",
-            title = "Phiên bản 3.4",
+            versionCode = 7,
+            versionName = "3.5",
+            title = "Phiên bản 3.5",
             publishedDateLabel = "05/12/2026",
-            apkDownloadUrl = "https://example.com/v3.4.apk",
-            apkFileName = "Lich-TKB-LHL-v3.4-vc6.apk",
+            apkDownloadUrl = "https://example.com/v3.5.apk",
+            apkFileName = "Lich-TKB-LHL-v3.5-vc7.apk",
             apkSizeBytes = 25_165_824L,
-            releasePageUrl = "https://github.com/lehuyhung2com-sketch/Lich-TKBLHL/releases",
+            releasePageUrl = "https://github.com/lehuyhungh2com-sketch/Lich-TKBLHL/releases",
             changelogSections = listOf(
                 com.example.data.repository.VersionChangelogSection(
-                    versionName = "3.4",
-                    versionCode = 6,
+                    versionName = "3.5",
+                    versionCode = 7,
                     publishedDateLabel = "05/12/2026",
                     items = listOf("Cải tiến hiển thị Lịch công tác", "Sửa lỗi múi giờ thông báo")
                 ),
                 com.example.data.repository.VersionChangelogSection(
-                    versionName = "3.3",
-                    versionCode = 5,
+                    versionName = "3.4",
+                    versionCode = 6,
                     publishedDateLabel = "01/12/2026",
                     items = listOf("Tối ưu tốc độ đồng bộ TKB")
                 )
@@ -983,7 +983,7 @@ class UpgradeFeaturesUiTest {
         }
 
         composeRule.onNodeWithTag("app_update_banner").assertIsDisplayed()
-        composeRule.onNodeWithText("Có phiên bản mới 3.4").assertIsDisplayed()
+        composeRule.onNodeWithText("Có phiên bản mới 3.5").assertIsDisplayed()
         composeRule.onNodeWithTag("app_update_banner_button").performClick()
         org.junit.Assert.assertTrue(openClicked)
 
@@ -991,9 +991,9 @@ class UpgradeFeaturesUiTest {
         composeRule.onAllNodesWithText("Cập nhật phiên bản mới").assertCountEquals(2)
         composeRule.onAllNodesWithText("Cập nhật phiên bản mới")[0].assertIsDisplayed()
         composeRule.onNodeWithText("v${BuildConfig.VERSION_NAME}").assertIsDisplayed()
-        composeRule.onAllNodesWithText("v3.4").assertCountEquals(2)
-        composeRule.onAllNodesWithText("v3.4")[0].assertIsDisplayed()
-        composeRule.onNodeWithText("v3.3").assertIsDisplayed()
+        composeRule.onAllNodesWithText("v3.5").assertCountEquals(2)
+        composeRule.onAllNodesWithText("v3.5")[0].assertIsDisplayed()
+        composeRule.onNodeWithText("v3.4").assertIsDisplayed()
         composeRule.onNodeWithText("Cải tiến hiển thị Lịch công tác").assertIsDisplayed()
         composeRule.onNodeWithText("Tối ưu tốc độ đồng bộ TKB").assertIsDisplayed()
         composeRule.onNodeWithTag("app_update_dialog_primary_button").assertIsDisplayed()

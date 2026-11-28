@@ -624,7 +624,7 @@ class LhlBusinessLogicTest {
             name = "Lịch & TKB v3.4 (Build 6)",
             body = "## v3.4 (Build 6)\n- Tự động thông báo khi có thay đổi lịch\n- Tối ưu hiển thị Widget\n\n---\nPhiên bản: 3.4 (Build 6)",
             publishedAt = "2026-12-05T08:00:00Z",
-            htmlUrl = "https://github.com/lehuyhung2com-sketch/Lich-TKBLHL/releases/tag/v3.4-b6",
+            htmlUrl = "https://github.com/lehuyhungh2com-sketch/Lich-TKBLHL/releases/tag/v3.4-b6",
             assets = listOf(
                 com.example.data.remote.GitHubAssetDto(
                     name = "Lich-TKB-LHL-v3.4-vc6.apk",

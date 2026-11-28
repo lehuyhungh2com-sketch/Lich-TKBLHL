@@ -1,5 +1,8 @@
 # Nhật ký cập nhật — Lịch & TKB THCS Lê Hữu Lập
 
+## v3.3 (Build 5)
+- Sửa địa chỉ kho GitHub Releases để tính năng tự động kiểm tra và cập nhật phiên bản mới hoạt động chính xác.
+
 ## v3.2 (Build 4)
 - Bổ sung tính năng tự động kiểm tra phiên bản mới từ GitHub Releases ngay trong ứng dụng (không tốn quota Firestore).
 - Hiển thị chi tiết các điểm mới so với phiên bản cũ đang cài trên máy trước khi cập nhật.
