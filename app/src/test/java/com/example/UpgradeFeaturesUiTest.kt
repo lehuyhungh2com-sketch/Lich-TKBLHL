@@ -85,9 +85,10 @@ class UpgradeFeaturesUiTest {
             }
         }
 
-        // Verify v3.1 badge is visible at the top and role title is omitted
+        // Verify current version badge is visible at the top, role title is omitted, and update check button exists
         composeRule.onNodeWithTag("settings_version_badge").assertIsDisplayed()
-        composeRule.onNodeWithText("Phiên bản 3.1").assertIsDisplayed()
+        composeRule.onNodeWithText("Phiên bản ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
+        composeRule.onNodeWithTag("settings_check_update_button").assertIsDisplayed()
         composeRule.onNodeWithText("Giáo viên").assertDoesNotExist()
         composeRule.onNodeWithText("Ban Giám hiệu").assertDoesNotExist()
 
@@ -923,5 +924,78 @@ class UpgradeFeaturesUiTest {
         bmpNoSat5.recycle()
         bmpWithSat5.recycle()
         bmpAfternoon.recycle()
+    }
+
+    @Test
+    fun updateBannerAndDialog_showVersionDiffAndChangelogBullets() {
+        val updateInfo = com.example.data.repository.AppUpdateInfo(
+            versionCode = 6,
+            versionName = "3.4",
+            title = "Phiên bản 3.4",
+            publishedDateLabel = "05/12/2026",
+            apkDownloadUrl = "https://example.com/v3.4.apk",
+            apkFileName = "Lich-TKB-LHL-v3.4-vc6.apk",
+            apkSizeBytes = 25_165_824L,
+            releasePageUrl = "https://github.com/lehuyhung2com-sketch/Lich-TKBLHL/releases",
+            changelogSections = listOf(
+                com.example.data.repository.VersionChangelogSection(
+                    versionName = "3.4",
+                    versionCode = 6,
+                    publishedDateLabel = "05/12/2026",
+                    items = listOf("Cải tiến hiển thị Lịch công tác", "Sửa lỗi múi giờ thông báo")
+                ),
+                com.example.data.repository.VersionChangelogSection(
+                    versionName = "3.3",
+                    versionCode = 5,
+                    publishedDateLabel = "01/12/2026",
+                    items = listOf("Tối ưu tốc độ đồng bộ TKB")
+                )
+            )
+        )
+        var openClicked = false
+        val state = sampleUiState().copy(
+            appUpdate = com.example.ui.AppUpdateUiState(
+                availableUpdate = updateInfo,
+                showDialog = true
+            )
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                com.example.ui.screens.TodayScreen(
+                    uiState = state,
+                    onToggleHomeroom = {},
+                    onSyncNow = {},
+                    onRefreshWeather = {},
+                    onOpenTimetable = {},
+                    onSaveLessonNote = { _, _ -> },
+                    onDeleteLessonNote = {},
+                    onDismissBanner = {},
+                    onOpenUpdateDialog = { openClicked = true }
+                )
+                com.example.ui.components.AppUpdateDialog(
+                    updateState = state.appUpdate,
+                    onStartDownloadAndInstall = {},
+                    onInstallDownloadedApk = {},
+                    onDismiss = {}
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("app_update_banner").assertIsDisplayed()
+        composeRule.onNodeWithText("Có phiên bản mới 3.4").assertIsDisplayed()
+        composeRule.onNodeWithTag("app_update_banner_button").performClick()
+        org.junit.Assert.assertTrue(openClicked)
+
+        composeRule.onNodeWithTag("app_update_dialog").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Cập nhật phiên bản mới").assertCountEquals(2)
+        composeRule.onAllNodesWithText("Cập nhật phiên bản mới")[0].assertIsDisplayed()
+        composeRule.onNodeWithText("v${BuildConfig.VERSION_NAME}").assertIsDisplayed()
+        composeRule.onAllNodesWithText("v3.4").assertCountEquals(2)
+        composeRule.onAllNodesWithText("v3.4")[0].assertIsDisplayed()
+        composeRule.onNodeWithText("v3.3").assertIsDisplayed()
+        composeRule.onNodeWithText("Cải tiến hiển thị Lịch công tác").assertIsDisplayed()
+        composeRule.onNodeWithText("Tối ưu tốc độ đồng bộ TKB").assertIsDisplayed()
+        composeRule.onNodeWithTag("app_update_dialog_primary_button").assertIsDisplayed()
     }
 }

@@ -62,6 +62,7 @@ import com.example.domain.model.PeriodLiveStatus
 import com.example.domain.model.ResolvedPeriod
 import com.example.domain.model.WeatherSnapshot
 import com.example.ui.MainUiState
+import com.example.ui.components.AppUpdateAvailableBanner
 import com.example.ui.components.HomeroomModeToggle
 import com.example.ui.components.LessonNoteEditorSheet
 import com.example.ui.components.LivePeriodHeroCard
@@ -84,6 +85,8 @@ fun TodayScreen(
     onSaveLessonNote: (ResolvedPeriod, String) -> Unit,
     onDeleteLessonNote: (ResolvedPeriod) -> Unit,
     onDismissBanner: () -> Unit,
+    onOpenUpdateDialog: () -> Unit = {},
+    onDismissUpdateBanner: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val teacher = uiState.currentTeacher
@@ -176,6 +179,18 @@ fun TodayScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // In-App Update Available Banner (GitHub Releases)
+            val pendingUpdate = uiState.appUpdate.availableUpdate
+            if (uiState.showUpdateBanner && pendingUpdate != null) {
+                item {
+                    AppUpdateAvailableBanner(
+                        update = pendingUpdate,
+                        onOpenUpdateDialog = onOpenUpdateDialog,
+                        onDismiss = onDismissUpdateBanner
+                    )
                 }
             }
 

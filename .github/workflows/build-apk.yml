@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,10 +16,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
+
+      - name: Read app version metadata
+        id: app_meta
+        run: |
+          VERSION_CODE=$(grep -E 'versionCode\s*=' app/build.gradle.kts | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/')
+          VERSION_NAME=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "apk_name=Lich-TKB-LHL-v${VERSION_NAME}-vc${VERSION_CODE}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Prepare debug.keystore
         run: |
@@ -44,8 +56,40 @@ jobs:
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon
 
-      - name: Upload APK v2.0
+      - name: Rename APK for Release
+        run: cp app/build/outputs/apk/debug/app-debug.apk "${{ steps.app_meta.outputs.apk_name }}"
+
+      - name: Prepare Release Notes
+        run: |
+          VNAME="${{ steps.app_meta.outputs.version_name }}"
+          VCODE="${{ steps.app_meta.outputs.version_code }}"
+          BODY_FILE="release_notes_body.md"
+          if [ -f RELEASE_NOTES.md ]; then
+            awk '/^## /{ if (found) exit; found=1; next } found { print }' RELEASE_NOTES.md > "$BODY_FILE"
+          fi
+          if [ ! -s "$BODY_FILE" ]; then
+            git log -1 --pretty=%B > "$BODY_FILE"
+          fi
+          printf '\n\n---\nPhiên bản: %s (Build %s)\n' "$VNAME" "$VCODE" >> "$BODY_FILE"
+
+      - name: Publish GitHub Release with APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VNAME="${{ steps.app_meta.outputs.version_name }}"
+          VCODE="${{ steps.app_meta.outputs.version_code }}"
+          APK_FILE="${{ steps.app_meta.outputs.apk_name }}"
+          TAG="v${VNAME}-b${VCODE}"
+          TITLE="Lịch & TKB THCS Lê Hữu Lập v${VNAME} (Build ${VCODE})"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TITLE" --notes-file release_notes_body.md
+            gh release upload "$TAG" "$APK_FILE" --clobber
+          else
+            gh release create "$TAG" "$APK_FILE" --title "$TITLE" --notes-file release_notes_body.md --latest
+          fi
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Lich-TKB-LHL-v2.0-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Lich-TKB-LHL-v${{ steps.app_meta.outputs.version_name }}-APK
+          path: ${{ steps.app_meta.outputs.apk_name }}

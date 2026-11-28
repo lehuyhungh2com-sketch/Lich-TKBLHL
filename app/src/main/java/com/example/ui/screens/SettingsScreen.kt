@@ -37,12 +37,14 @@ import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -123,6 +125,8 @@ fun SettingsScreen(
     onUpdateWidgetAppearance: (Boolean, Float, WidgetTextTheme, WidgetCornerStyle, Float, Boolean) -> Unit,
     onRefreshWidgetsNow: () -> Unit,
     onLogout: () -> Unit,
+    onCheckAppUpdate: () -> Unit = {},
+    onOpenUpdateDialog: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -337,6 +341,110 @@ fun SettingsScreen(
                                         .weight(1f)
                                         .testTag("settings_logout_button")
                                 ) { logoutContent() }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1B. APP IN-APP UPDATE CARD (GitHub Releases)
+            item {
+                val appUpdate = uiState.appUpdate
+                val available = appUpdate.availableUpdate
+                SettingsSectionCard(
+                    icon = if (available != null) Icons.Rounded.NewReleases else Icons.Rounded.SystemUpdate,
+                    title = "Cập nhật ứng dụng"
+                ) {
+                    Text(
+                        text = "Đang cài: Phiên bản ${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    if (available != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "Có phiên bản mới ${available.versionName}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Điểm mới: ${available.summaryPreview}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f)
+                                )
+                            }
+                        }
+                    } else if (!appUpdate.statusMessage.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = appUpdate.statusMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (!appUpdate.errorMessage.isNullOrBlank()) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.secondary
+                            }
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Kiểm tra và tải bản cập nhật mới trực tiếp từ GitHub Releases, giữ nguyên dữ liệu đã lưu.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (available != null) {
+                        Button(
+                            onClick = onOpenUpdateDialog,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_open_update_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.SystemUpdate,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Xem thay đổi & Cập nhật", maxLines = 1, softWrap = false)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onCheckAppUpdate,
+                            enabled = !appUpdate.isChecking,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_check_update_button")
+                        ) {
+                            if (appUpdate.isChecking) {
+                                CircularProgressIndicator(
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Đang kiểm tra...", maxLines = 1, softWrap = false)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.SystemUpdate,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Kiểm tra cập nhật", maxLines = 1, softWrap = false)
                             }
                         }
                     }

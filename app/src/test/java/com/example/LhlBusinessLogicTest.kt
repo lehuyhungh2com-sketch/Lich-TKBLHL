@@ -615,4 +615,78 @@ class LhlBusinessLogicTest {
         assertTrue(afternoonFile.startsWith("TKB_ToanTruong_BuoiChieu_Thang11_Tuan9-12_"))
         assertTrue(afternoonFile.endsWith(".png"))
     }
+
+    @Test
+    fun appUpdateParser_detectsNewerReleasesAndAggregatesChangelogs() {
+        val r6 = com.example.data.remote.GitHubReleaseDto(
+            id = 6L,
+            tagName = "v3.4-b6",
+            name = "Lịch & TKB v3.4 (Build 6)",
+            body = "## v3.4 (Build 6)\n- Tự động thông báo khi có thay đổi lịch\n- Tối ưu hiển thị Widget\n\n---\nPhiên bản: 3.4 (Build 6)",
+            publishedAt = "2026-12-05T08:00:00Z",
+            htmlUrl = "https://github.com/lehuyhung2com-sketch/Lich-TKBLHL/releases/tag/v3.4-b6",
+            assets = listOf(
+                com.example.data.remote.GitHubAssetDto(
+                    name = "Lich-TKB-LHL-v3.4-vc6.apk",
+                    size = 25_165_824L,
+                    browserDownloadUrl = "https://example.com/v3.4.apk"
+                )
+            )
+        )
+        val r5 = com.example.data.remote.GitHubReleaseDto(
+            id = 5L,
+            tagName = "v3.3-b5",
+            name = "Lịch & TKB v3.3 (Build 5)",
+            body = "- Thêm bộ lọc tìm kiếm lớp nhanh",
+            publishedAt = "2026-12-01T08:00:00Z",
+            assets = listOf(
+                com.example.data.remote.GitHubAssetDto(
+                    name = "Lich-TKB-LHL-v3.3-vc5.apk",
+                    size = 24_000_000L,
+                    browserDownloadUrl = "https://example.com/v3.3.apk"
+                )
+            )
+        )
+        val r4Current = com.example.data.remote.GitHubReleaseDto(
+            id = 4L,
+            tagName = "v3.2-b4",
+            name = "Lịch & TKB v3.2 (Build 4)",
+            body = "- Bản đang cài",
+            publishedAt = "2026-11-28T08:00:00Z",
+            assets = listOf(
+                com.example.data.remote.GitHubAssetDto(
+                    name = "Lich-TKB-LHL-v3.2-vc4.apk",
+                    size = 24_000_000L,
+                    browserDownloadUrl = "https://example.com/v3.2.apk"
+                )
+            )
+        )
+        val draftRelease = r6.copy(id = 7L, tagName = "v3.5-b7", draft = true)
+
+        val update = com.example.data.repository.AppUpdateParser.findPendingUpdate(
+            releases = listOf(draftRelease, r5, r6, r4Current),
+            currentVersionCode = 4,
+            currentVersionName = "3.2"
+        )
+        requireNotNull(update)
+        assertEquals(6, update.versionCode)
+        assertEquals("3.4", update.versionName)
+        assertEquals("05/12/2026", update.publishedDateLabel)
+        assertEquals("https://example.com/v3.4.apk", update.apkDownloadUrl)
+        assertEquals(2, update.changelogSections.size)
+        assertEquals("3.4", update.changelogSections[0].versionName)
+        assertEquals(
+            listOf("Tự động thông báo khi có thay đổi lịch", "Tối ưu hiển thị Widget"),
+            update.changelogSections[0].items
+        )
+        assertEquals("3.3", update.changelogSections[1].versionName)
+        assertEquals(listOf("Thêm bộ lọc tìm kiếm lớp nhanh"), update.changelogSections[1].items)
+
+        val alreadyLatest = com.example.data.repository.AppUpdateParser.findPendingUpdate(
+            releases = listOf(r6, r5, r4Current),
+            currentVersionCode = 6,
+            currentVersionName = "3.4"
+        )
+        org.junit.Assert.assertNull(alreadyLatest)
+    }
 }

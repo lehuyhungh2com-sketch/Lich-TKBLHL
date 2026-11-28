@@ -55,6 +55,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.data.local.AppThemeMode
 import com.example.ui.AppViewModel
 import com.example.ui.MainUiState
+import com.example.ui.components.AppUpdateDialog
 import com.example.ui.screens.CalendarScreen
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.SettingsScreen
@@ -286,7 +287,9 @@ private fun LhlTimetableRoot(
                             onOpenTimetable = { navigateToTab(MainActivity.TAB_TIMETABLE) },
                             onSaveLessonNote = viewModel::saveLessonNote,
                             onDeleteLessonNote = viewModel::deleteLessonNote,
-                            onDismissBanner = viewModel::dismissBanner
+                            onDismissBanner = viewModel::dismissBanner,
+                            onOpenUpdateDialog = viewModel::openUpdateDialog,
+                            onDismissUpdateBanner = viewModel::dismissUpdateBanner
                         )
                     }
 
@@ -329,11 +332,22 @@ private fun LhlTimetableRoot(
                             onToggleGpsLocation = viewModel::setUseGpsLocation,
                             onUpdateWidgetAppearance = viewModel::updateWidgetAppearance,
                             onRefreshWidgetsNow = viewModel::refreshAllWidgetsNow,
-                            onLogout = viewModel::logout
+                            onLogout = viewModel::logout,
+                            onCheckAppUpdate = { viewModel.checkForAppUpdate(manual = true) },
+                            onOpenUpdateDialog = viewModel::openUpdateDialog
                         )
                     }
                 }
             }
+        }
+
+        if (uiState.appUpdate.showDialog && uiState.appUpdate.availableUpdate != null) {
+            AppUpdateDialog(
+                updateState = uiState.appUpdate,
+                onStartDownloadAndInstall = viewModel::startUpdateDownloadAndInstall,
+                onInstallDownloadedApk = viewModel::installDownloadedApkNow,
+                onDismiss = viewModel::dismissUpdateDialog
+            )
         }
     }
 }

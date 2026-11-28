@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -117,7 +118,9 @@ data class UserPreferencesState(
     val widgetCornerStyle: WidgetCornerStyle = WidgetCornerStyle.ROUNDED,
     val widgetFontSize: WidgetFontSize = WidgetFontSize.MEDIUM,
     val widgetFontScale: Float = DEFAULT_WIDGET_FONT_SCALE,
-    val widgetShowSubject: Boolean = true
+    val widgetShowSubject: Boolean = true,
+    val lastUpdateCheckMs: Long = 0L,
+    val dismissedUpdateVersionCode: Int = 0
 ) {
     val isLoggedIn: Boolean get() = !loggedInTeacherId.isNullOrBlank()
     val isCompactDensity: Boolean get() = appDensityMode == AppDensityMode.COMPACT
@@ -160,6 +163,8 @@ class AppPreferences(private val context: Context) {
         val WIDGET_FONT_SIZE = stringPreferencesKey("widget_font_size")
         val WIDGET_FONT_SCALE = floatPreferencesKey("widget_font_scale")
         val WIDGET_SHOW_SUBJECT = booleanPreferencesKey("widget_show_subject")
+        val LAST_UPDATE_CHECK_MS = longPreferencesKey("last_update_check_ms")
+        val DISMISSED_UPDATE_VERSION_CODE = intPreferencesKey("dismissed_update_version_code")
     }
 
     val preferencesFlow: Flow<UserPreferencesState> = context.dataStore.data.map { prefs ->
@@ -193,7 +198,9 @@ class AppPreferences(private val context: Context) {
             widgetCornerStyle = WidgetCornerStyle.fromKey(prefs[Keys.WIDGET_CORNER_STYLE]),
             widgetFontSize = legacyFontSize,
             widgetFontScale = resolvedFontScale,
-            widgetShowSubject = prefs[Keys.WIDGET_SHOW_SUBJECT] ?: true
+            widgetShowSubject = prefs[Keys.WIDGET_SHOW_SUBJECT] ?: true,
+            lastUpdateCheckMs = prefs[Keys.LAST_UPDATE_CHECK_MS] ?: 0L,
+            dismissedUpdateVersionCode = prefs[Keys.DISMISSED_UPDATE_VERSION_CODE] ?: 0
         )
     }
 
@@ -309,6 +316,18 @@ class AppPreferences(private val context: Context) {
             prefs[Keys.WIDGET_FONT_SIZE] = bucket.key
             prefs[Keys.WIDGET_FONT_SCALE] = clampedScale
             prefs[Keys.WIDGET_SHOW_SUBJECT] = showSubject
+        }
+    }
+
+    suspend fun setLastUpdateCheckMs(timestampMs: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.LAST_UPDATE_CHECK_MS] = timestampMs
+        }
+    }
+
+    suspend fun setDismissedUpdateVersionCode(versionCode: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DISMISSED_UPDATE_VERSION_CODE] = versionCode
         }
     }
 }

@@ -6,6 +6,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.AppPreferences
 import com.example.data.remote.FirestoreReadOnlyClient
 import com.example.data.remote.OpenMeteoApi
+import com.example.data.repository.AppUpdateRepository
 import com.example.data.repository.SchoolRepository
 import com.example.data.repository.WeatherRepository
 import com.example.notification.NotificationHelper
@@ -32,6 +33,8 @@ class LhlTimetableApp : Application(), Configuration.Provider {
         private set
     lateinit var weatherRepository: WeatherRepository
         private set
+    lateinit var appUpdateRepository: AppUpdateRepository
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -49,6 +52,7 @@ class LhlTimetableApp : Application(), Configuration.Provider {
             api = OpenMeteoApi.create(),
             preferences = preferences
         )
+        appUpdateRepository = AppUpdateRepository(context = this)
 
         NotificationHelper.createChannels(this)
         appScope.launch {

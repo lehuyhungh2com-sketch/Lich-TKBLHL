@@ -3,6 +3,7 @@ package com.example.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.LhlTimetableApp
 import com.example.data.local.AppAccentPalette
 import com.example.data.local.AppDensityMode
@@ -13,7 +14,11 @@ import com.example.data.local.SyncMetadataEntity
 import com.example.data.local.UserPreferencesState
 import com.example.data.local.WidgetCornerStyle
 import com.example.data.local.WidgetTextTheme
+import com.example.data.repository.AppUpdateInfo
 import com.example.data.repository.LoginResult
+import com.example.data.repository.UpdateCheckOutcome
+import com.example.util.ApkInstallHelper
+import java.io.File
 import com.example.domain.lunar.LunarCalendar
 import com.example.domain.lunar.LunarDate
 import com.example.domain.lunar.VnDate
@@ -85,12 +90,17 @@ data class MainUiState(
     val isRefreshingWeather: Boolean = false,
     val syncStatusBanner: String? = null,
     val loginLoading: Boolean = false,
-    val loginError: String? = null
+    val loginError: String? = null,
+    val appUpdate: AppUpdateUiState = AppUpdateUiState()
 ) {
     val isLoggedIn: Boolean get() = preferences.isLoggedIn && currentTeacher != null
     val homeroomClassId: String? get() = homeroomClass?.id ?: currentTeacher?.homeroomClass
     val canToggleHomeroom: Boolean get() = !homeroomClassId.isNullOrBlank()
     val effectiveShowHomeroom: Boolean get() = preferences.showHomeroomClass && canToggleHomeroom
+
+    val showUpdateBanner: Boolean
+        get() = appUpdate.availableUpdate != null &&
+            preferences.dismissedUpdateVersionCode < appUpdate.availableUpdate.versionCode
 
     fun personalNoteFor(period: ResolvedPeriod): String? {
         val key = LessonNoteEntity.buildKey(
@@ -103,6 +113,19 @@ data class MainUiState(
         return lessonNotes[key]?.takeIf { it.isNotBlank() }
     }
 }
+
+data class AppUpdateUiState(
+    val isChecking: Boolean = false,
+    val availableUpdate: AppUpdateInfo? = null,
+    val showDialog: Boolean = false,
+    val isDownloading: Boolean = false,
+    val downloadProgress: Float? = null,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val downloadedApkFile: File? = null,
+    val statusMessage: String? = null,
+    val errorMessage: String? = null
+)
 
 private data class LocalCatalogBundle(
     val config: SchoolConfig,
@@ -119,7 +142,8 @@ private data class TransientStatus(
     val isRefreshingWeather: Boolean = false,
     val syncStatusBanner: String? = null,
     val loginLoading: Boolean = false,
-    val loginError: String? = null
+    val loginError: String? = null,
+    val appUpdate: AppUpdateUiState = AppUpdateUiState()
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -128,12 +152,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as LhlTimetableApp
     private val schoolRepo = app.schoolRepository
     private val weatherRepo = app.weatherRepository
+    private val appUpdateRepo = app.appUpdateRepository
     private val prefsRepo = app.preferences
 
     private val clockTickFlow = MutableStateFlow(VnDate.today() to VnTime.now())
     private val selectedWeekOverride = MutableStateFlow<Int?>(null)
     private val transientStatus = MutableStateFlow(TransientStatus())
     private var widgetUpdateJob: Job? = null
+    private var updateDownloadJob: Job? = null
 
     private val catalogFlow = combine(
         schoolRepo.schoolConfigFlow,
@@ -571,7 +597,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             isRefreshingWeather = mwp.status.isRefreshingWeather,
             syncStatusBanner = mwp.status.syncStatusBanner,
             loginLoading = mwp.status.loginLoading,
-            loginError = mwp.status.loginError
+            loginError = mwp.status.loginError,
+            appUpdate = mwp.status.appUpdate
         )
     }.stateIn(
         scope = viewModelScope,
@@ -586,6 +613,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         startClockTicker()
         refreshWeatherSilently()
         syncOnStartupIfLoggedIn()
+        checkForAppUpdateOnStartup()
     }
 
     private fun startClockTicker() {
@@ -603,6 +631,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (prefs.isLoggedIn) {
                 syncNow(force = false)
             }
+        }
+    }
+
+    private fun checkForAppUpdateOnStartup() {
+        viewModelScope.launch {
+            val prefs = prefsRepo.getSnapshot()
+            val nowMs = System.currentTimeMillis()
+            val throttleMs = 6L * 60L * 60L * 1000L
+            if (nowMs - prefs.lastUpdateCheckMs < throttleMs) return@launch
+            checkForAppUpdate(manual = false)
         }
     }
 
@@ -852,6 +890,185 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             WidgetUpdater.updateAllWidgets(app)
             transientStatus.value = transientStatus.value.copy(
                 syncStatusBanner = "Đã cập nhật lại toàn bộ Widget theo thời gian thực."
+            )
+        }
+    }
+
+    fun checkForAppUpdate(manual: Boolean = true) {
+        if (transientStatus.value.appUpdate.isChecking) return
+        viewModelScope.launch {
+            transientStatus.value = transientStatus.value.copy(
+                appUpdate = transientStatus.value.appUpdate.copy(
+                    isChecking = true,
+                    errorMessage = null,
+                    statusMessage = if (manual) "Đang kiểm tra phiên bản mới trên GitHub..." else null
+                )
+            )
+            val outcome = appUpdateRepo.checkForUpdate(
+                currentVersionCode = BuildConfig.VERSION_CODE,
+                currentVersionName = BuildConfig.VERSION_NAME
+            )
+            prefsRepo.setLastUpdateCheckMs(System.currentTimeMillis())
+
+            when (outcome) {
+                is UpdateCheckOutcome.UpdateAvailable -> {
+                    val prev = transientStatus.value.appUpdate
+                    val sameDownloaded = prev.availableUpdate?.versionCode == outcome.info.versionCode &&
+                        prev.downloadedApkFile?.exists() == true
+                    transientStatus.value = transientStatus.value.copy(
+                        appUpdate = prev.copy(
+                            isChecking = false,
+                            availableUpdate = outcome.info,
+                            showDialog = manual || prev.showDialog,
+                            downloadedApkFile = if (sameDownloaded) prev.downloadedApkFile else null,
+                            statusMessage = "Có phiên bản mới ${outcome.info.versionName}!",
+                            errorMessage = null
+                        )
+                    )
+                }
+
+                is UpdateCheckOutcome.UpToDate -> {
+                    transientStatus.value = transientStatus.value.copy(
+                        appUpdate = transientStatus.value.appUpdate.copy(
+                            isChecking = false,
+                            availableUpdate = null,
+                            statusMessage = if (manual) {
+                                "Bạn đang dùng phiên bản mới nhất (${outcome.currentVersionName})."
+                            } else null,
+                            errorMessage = null
+                        )
+                    )
+                }
+
+                is UpdateCheckOutcome.Error -> {
+                    transientStatus.value = transientStatus.value.copy(
+                        appUpdate = transientStatus.value.appUpdate.copy(
+                            isChecking = false,
+                            statusMessage = if (manual) outcome.message else null,
+                            errorMessage = if (manual) outcome.message else null
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun openUpdateDialog() {
+        val current = transientStatus.value.appUpdate
+        if (current.availableUpdate != null) {
+            transientStatus.value = transientStatus.value.copy(
+                appUpdate = current.copy(showDialog = true, errorMessage = null)
+            )
+        } else {
+            checkForAppUpdate(manual = true)
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        val current = transientStatus.value.appUpdate
+        transientStatus.value = transientStatus.value.copy(
+            appUpdate = current.copy(showDialog = false)
+        )
+    }
+
+    fun dismissUpdateBanner() {
+        val update = transientStatus.value.appUpdate.availableUpdate ?: return
+        viewModelScope.launch {
+            prefsRepo.setDismissedUpdateVersionCode(update.versionCode)
+        }
+    }
+
+    fun startUpdateDownloadAndInstall() {
+        val update = transientStatus.value.appUpdate.availableUpdate ?: return
+        val existingFile = transientStatus.value.appUpdate.downloadedApkFile
+        if (existingFile != null && existingFile.exists()) {
+            installDownloadedApkNow()
+            return
+        }
+        if (transientStatus.value.appUpdate.isDownloading) return
+
+        updateDownloadJob?.cancel()
+        updateDownloadJob = viewModelScope.launch {
+            transientStatus.value = transientStatus.value.copy(
+                appUpdate = transientStatus.value.appUpdate.copy(
+                    isDownloading = true,
+                    downloadProgress = 0f,
+                    downloadedBytes = 0L,
+                    totalBytes = update.apkSizeBytes,
+                    errorMessage = null,
+                    statusMessage = "Đang tải phiên bản ${update.versionName}..."
+                )
+            )
+            var lastUiUpdateMs = 0L
+            val result = appUpdateRepo.downloadApk(
+                downloadUrl = update.apkDownloadUrl,
+                fileName = update.apkFileName
+            ) { downloaded, total ->
+                val now = System.currentTimeMillis()
+                if (now - lastUiUpdateMs >= 120L || (total > 0L && downloaded >= total)) {
+                    lastUiUpdateMs = now
+                    val fraction = if (total > 0L) (downloaded.toFloat() / total.toFloat()).coerceIn(0f, 1f) else null
+                    transientStatus.value = transientStatus.value.copy(
+                        appUpdate = transientStatus.value.appUpdate.copy(
+                            downloadProgress = fraction,
+                            downloadedBytes = downloaded,
+                            totalBytes = if (total > 0L) total else update.apkSizeBytes
+                        )
+                    )
+                }
+            }
+
+            result.onSuccess { apkFile ->
+                transientStatus.value = transientStatus.value.copy(
+                    appUpdate = transientStatus.value.appUpdate.copy(
+                        isDownloading = false,
+                        downloadProgress = 1f,
+                        downloadedApkFile = apkFile,
+                        statusMessage = "Đã tải xong phiên bản ${update.versionName}.",
+                        errorMessage = null
+                    )
+                )
+                if (ApkInstallHelper.canRequestPackageInstalls(app)) {
+                    val launched = ApkInstallHelper.launchApkInstaller(app, apkFile)
+                    if (!launched) {
+                        transientStatus.value = transientStatus.value.copy(
+                            appUpdate = transientStatus.value.appUpdate.copy(
+                                errorMessage = "Không thể tự mở trình cài đặt. Hãy thử mở trang tải trên trình duyệt."
+                            )
+                        )
+                    }
+                }
+            }.onFailure { err ->
+                transientStatus.value = transientStatus.value.copy(
+                    appUpdate = transientStatus.value.appUpdate.copy(
+                        isDownloading = false,
+                        downloadProgress = null,
+                        errorMessage = "Tải file APK thất bại: ${err.localizedMessage ?: "vui lòng thử lại"}."
+                    )
+                )
+            }
+        }
+    }
+
+    fun installDownloadedApkNow() {
+        val apkFile = transientStatus.value.appUpdate.downloadedApkFile ?: return
+        if (!apkFile.exists()) {
+            transientStatus.value = transientStatus.value.copy(
+                appUpdate = transientStatus.value.appUpdate.copy(downloadedApkFile = null)
+            )
+            startUpdateDownloadAndInstall()
+            return
+        }
+        if (!ApkInstallHelper.canRequestPackageInstalls(app)) {
+            ApkInstallHelper.openUnknownAppSourcesSettings(app)
+            return
+        }
+        val launched = ApkInstallHelper.launchApkInstaller(app, apkFile)
+        if (!launched) {
+            transientStatus.value = transientStatus.value.copy(
+                appUpdate = transientStatus.value.appUpdate.copy(
+                    errorMessage = "Không mở được trình cài đặt APK. Bạn có thể mở liên kết tải trên trình duyệt."
+                )
             )
         }
     }
