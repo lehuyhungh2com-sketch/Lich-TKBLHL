@@ -472,4 +472,114 @@ class LhlBusinessLogicTest {
         assertTrue(notif.contains("Chiều: 6A1"))
         assertFalse(notif.contains("T3"))
     }
+
+    @Test
+    fun classVsTeacher_mondayAndSaturdayRules_matchWebSpec() {
+        val teachers = listOf(
+            Teacher(id = "gv-bac", name = "Phạm Văn Bắc", shortName = "Bắc", email = "bac@lhl.vn"),
+            Teacher(id = "gv-thuy", name = "Nguyễn Thị Thúy", shortName = "Thúy", email = "thuy@lhl.vn"),
+            Teacher(id = "gv-chung", name = "Trần Văn Chung", shortName = "Chung", email = "chung@lhl.vn"),
+            Teacher(id = "gv-dung", name = "Bùi Văn Dũng", shortName = "Dũng", email = "dung@lhl.vn")
+        )
+        val classes = listOf(SchoolClass(id = "6A1", name = "6A1", grade = 6))
+        val subjects = listOf(
+            Subject(id = "sub-gdtc", name = "GDTC", code = "GDTC"),
+            Subject(id = "sub-su", name = "LS&ĐL-SU", code = "SU"),
+            Subject(id = "sub-hdtn", name = "HĐTN", code = "HDTN"),
+            Subject(id = "sub-tin", name = "Tin học", code = "Tin"),
+            Subject(id = "sub-toan", name = "Toán", code = "Toán")
+        )
+        val slots = listOf(
+            // Monday T2 morning for 6A1 matching Web screenshot:
+            // Row T1: GDTC (actualPeriod=2), Row T2: Lịch sử (actualPeriod=4),
+            // Row T3: HĐTN (actualPeriod=1), Row T4: Tin học (actualPeriod=3)
+            TimetableSlot("m1", 12, "6A1", "T2", 1, "sub-gdtc", "gv-bac", session = "morning", actualPeriod = 2),
+            TimetableSlot("m2", 12, "6A1", "T2", 2, "sub-su", "gv-thuy", session = "morning", actualPeriod = 4),
+            TimetableSlot("m3", 12, "6A1", "T2", 3, "sub-hdtn", "gv-thuy", session = "morning", actualPeriod = 1),
+            TimetableSlot("m4", 12, "6A1", "T2", 4, "sub-tin", "gv-chung", session = "morning", actualPeriod = 3),
+            // Tuesday T3 morning: no actual number suffix even if T3
+            TimetableSlot("t3_1", 12, "6A1", "T3", 1, "sub-toan", "gv-dung", session = "morning", actualPeriod = null),
+            // Saturday T7 morning: explicit actualPeriod=2 -> Toán 2 at Row T2
+            TimetableSlot("t7_2", 12, "6A1", "T7", 2, "sub-toan", "gv-dung", session = "morning", actualPeriod = 2),
+            // Afternoon Monday: never shows actual number suffix
+            TimetableSlot("a1", 12, "6A1", "T2", 3, "sub-toan", "gv-dung", session = "afternoon", actualPeriod = 3)
+        )
+
+        // 1. Class view: rows follow slot.period (1, 2, 3, 4), T2/T7 morning subjects show actualPeriod number
+        val classResolved = TimetableCalculator.resolveWeekPeriods(
+            weekNumber = 12,
+            rawSlots = slots,
+            schoolConfig = SchoolConfig(),
+            weekInfo = WeekInfo(12, "2026-11-23", "2026-11-29", "Tuần 12"),
+            deletedSlotKeys = emptySet(),
+            teachers = teachers,
+            classes = classes,
+            subjects = subjects,
+            assignments = emptyList(),
+            filterClassId = "6A1"
+        )
+        assertEquals(7, classResolved.size)
+
+        val t2Row1 = classResolved.first { it.slotId == "m1" }
+        val t2Row2 = classResolved.first { it.slotId == "m2" }
+        val t2Row3 = classResolved.first { it.slotId == "m3" }
+        val t2Row4 = classResolved.first { it.slotId == "m4" }
+        val t3Row1 = classResolved.first { it.slotId == "t3_1" }
+        val t7Row2 = classResolved.first { it.slotId == "t7_2" }
+        val afRow3 = classResolved.first { it.slotId == "a1" }
+
+        assertEquals(1, t2Row1.period)
+        assertEquals("GDTC 2", t2Row1.subjectName)
+        assertEquals(2, t2Row2.period)
+        assertEquals("Lịch sử 4", t2Row2.subjectName)
+        assertEquals(3, t2Row3.period)
+        assertEquals("HĐTN 1", t2Row3.subjectName)
+        assertEquals(4, t2Row4.period)
+        assertEquals("Tin học 3", t2Row4.subjectName)
+
+        assertEquals(1, t3Row1.period)
+        assertEquals("Toán", t3Row1.subjectName)
+        assertEquals(2, t7Row2.period)
+        assertEquals("Toán 2", t7Row2.subjectName)
+        assertEquals(3, afRow3.period)
+        assertEquals("Toán", afRow3.subjectName)
+
+        // Workload stats in Class View merges "Toán" (T3) + "Toán 2" (T7) + "Toán" (Afternoon) under "Toán"
+        val workload = TimetableCalculator.calculateWorkloadStats(
+            selectedWeek = 12,
+            selectedWeekPeriods = classResolved,
+            allCachedSlots = slots,
+            schoolConfig = SchoolConfig(),
+            weeks = emptyList(),
+            deletedSlotKeys = emptySet(),
+            teachers = teachers,
+            classes = classes,
+            subjects = subjects,
+            assignments = emptyList(),
+            filterTeacherId = null,
+            filterClassId = "6A1"
+        )
+        val toanRow = workload.bySubject.first { it.label == "Toán" }
+        assertEquals(2, toanRow.weekMorning)
+        assertEquals(1, toanRow.weekAfternoon)
+        assertFalse(workload.bySubject.any { it.label == "Toán 2" })
+
+        // 2. Teacher personal view: uses actualPeriod (T3 at 08:45) and clean subjectName without number suffix
+        val chungResolved = TimetableCalculator.resolveWeekPeriods(
+            weekNumber = 12,
+            rawSlots = slots,
+            schoolConfig = SchoolConfig(),
+            weekInfo = WeekInfo(12, "2026-11-23", "2026-11-29", "Tuần 12"),
+            deletedSlotKeys = emptySet(),
+            teachers = teachers,
+            classes = classes,
+            subjects = subjects,
+            assignments = emptyList(),
+            filterTeacherId = "gv-chung"
+        )
+        assertEquals(1, chungResolved.size)
+        assertEquals(3, chungResolved[0].period)
+        assertEquals("Tin học", chungResolved[0].subjectName)
+        assertEquals("08:45 – 09:30", chungResolved[0].timeRangeText)
+    }
 }

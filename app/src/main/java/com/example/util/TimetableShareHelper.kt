@@ -479,18 +479,19 @@ object TimetableShareHelper {
                     canvas.drawRoundRect(inner, 14f, 14f, filledBgPaint)
 
                     val line1 = if (showTeacher) {
-                        truncateText(match.subjectName, 13)
+                        match.subjectName
                     } else {
                         TimetableCalculator.compactClassName(match.className)
                     }
                     val line2 = if (showTeacher) {
-                        truncateText(match.teacherShortName, 14)
+                        match.teacherShortName
                     } else {
-                        truncateText(match.subjectName, 14)
+                        match.subjectName
                     }
 
-                    canvas.drawText(line1, inner.centerX(), inner.centerY() - 6f, mainCellPaint)
-                    canvas.drawText(line2, inner.centerX(), inner.centerY() + 22f, subCellPaint)
+                    val maxTextW = (inner.width() - 12f).coerceAtLeast(60f)
+                    drawFittedText(canvas, line1, inner.centerX(), inner.centerY() - 6f, maxTextW, mainCellPaint)
+                    drawFittedText(canvas, line2, inner.centerX(), inner.centerY() + 22f, maxTextW, subCellPaint)
                 }
             }
         }
@@ -633,21 +634,46 @@ object TimetableShareHelper {
         subCellPaint: Paint
     ) {
         val line1 = if (showTeacher) {
-            truncateText(match.subjectName, 14)
+            match.subjectName
         } else {
             TimetableCalculator.compactClassName(match.className)
         }
         val line2 = if (showTeacher) {
-            if (match.hideAfternoonTeacher) "" else truncateText(match.teacherShortName, 14)
+            if (match.hideAfternoonTeacher) "" else match.teacherShortName
         } else {
-            truncateText(match.subjectName, 14)
+            match.subjectName
         }
+        val maxTextW = (inner.width() - 12f).coerceAtLeast(60f)
         if (line2.isBlank()) {
-            canvas.drawText(line1, inner.centerX(), inner.centerY() + 7f, mainCellPaint)
+            drawFittedText(canvas, line1, inner.centerX(), inner.centerY() + 7f, maxTextW, mainCellPaint)
         } else {
-            canvas.drawText(line1, inner.centerX(), inner.centerY() - 5f, mainCellPaint)
-            canvas.drawText(line2, inner.centerX(), inner.centerY() + 20f, subCellPaint)
+            drawFittedText(canvas, line1, inner.centerX(), inner.centerY() - 5f, maxTextW, mainCellPaint)
+            drawFittedText(canvas, line2, inner.centerX(), inner.centerY() + 20f, maxTextW, subCellPaint)
         }
+    }
+
+    private fun drawFittedText(
+        canvas: Canvas,
+        text: String,
+        cx: Float,
+        baselineY: Float,
+        maxWidth: Float,
+        basePaint: Paint
+    ) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        val paint = Paint(basePaint)
+        while (paint.measureText(trimmed) > maxWidth && paint.textSize > 14f) {
+            paint.textSize = paint.textSize - 1f
+        }
+        var output = trimmed
+        if (paint.measureText(output) > maxWidth) {
+            while (output.length > 2 && paint.measureText("$output…") > maxWidth) {
+                output = output.dropLast(1)
+            }
+            output = "$output…"
+        }
+        canvas.drawText(output, cx, baselineY, paint)
     }
 
     private fun truncateText(text: String, maxChars: Int): String {

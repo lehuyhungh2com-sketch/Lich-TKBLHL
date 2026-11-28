@@ -115,6 +115,27 @@ object TimetableCalculator {
     }
 
     /**
+     * For Class timetables (Tab "TKB Lớp", "Lớp CN", "Xuất ảnh TKB Lớp"):
+     * Morning slots on Monday (T2) and Saturday (T7) display the actual teaching period number
+     * next to the subject name when explicit actualPeriod > 0 or actualPeriod != slot.period.
+     */
+    fun formatClassDisplaySubjectName(
+        slot: TimetableSlot,
+        baseSubjectName: String
+    ): String {
+        val actualPeriodNum = getSlotActualPeriod(slot)
+        val showActualNumber =
+            slot.session != "afternoon" &&
+                (slot.day == "T2" || slot.day == "T7") &&
+                ((slot.actualPeriod ?: 0) > 0 || actualPeriodNum != slot.period)
+        return if (showActualNumber) {
+            "$baseSubjectName $actualPeriodNum"
+        } else {
+            baseSubjectName
+        }
+    }
+
+    /**
      * Exact period start & end time rules:
      * - Morning Monday (T2): recess after Period 3.
      * - Morning T3..T7 & Afternoon (all days): recess after Period 2.
@@ -208,7 +229,8 @@ object TimetableCalculator {
         filterTeacherId: String? = null,
         filterClassId: String? = null,
         todayDate: VnDate? = null,
-        nowTime: VnTime? = null
+        nowTime: VnTime? = null,
+        forClassView: Boolean = (filterClassId != null)
     ): List<ResolvedPeriod> {
         val isLocked = weekInfo?.isLocked == true
         val effectiveSubjects = if (isLocked && !weekInfo?.lockedSubjects.isNullOrEmpty()) {
@@ -244,7 +266,8 @@ object TimetableCalculator {
                 if (effectiveTeacherId != filterTeacherId) return@mapNotNull null
             }
 
-            val effectivePeriod = getSlotActualPeriod(slot)
+            val actualPeriodNum = getSlotActualPeriod(slot)
+            val effectivePeriod = if (forClassView) slot.period else actualPeriodNum
             val subject = subjectsById[slot.subjectId]
             val schoolClass = classesById[slot.classId]
             val teacher = teachersById[effectiveTeacherId]
@@ -255,13 +278,18 @@ object TimetableCalculator {
                 config = schoolConfig.timeConfig
             )
 
-            val resolvedSubjectName = readableSubjectName(
+            val baseSubjectName = readableSubjectName(
                 subjectId = slot.subjectId,
                 subjectName = subject?.name,
                 subjectCode = subject?.code,
                 customLabel = slot.customLabel,
                 session = session
             )
+            val resolvedSubjectName = if (forClassView) {
+                formatClassDisplaySubjectName(slot, baseSubjectName)
+            } else {
+                baseSubjectName
+            }
             val resolvedSubjectShort = resolvedSubjectName
             val resolvedRoom = slot.room?.takeIf { it.isNotBlank() }
                 ?: schoolClass?.room.orEmpty()
@@ -272,7 +300,7 @@ object TimetableCalculator {
                     subjectId = slot.subjectId,
                     subjectCode = subject?.code,
                     subjectName = subject?.name,
-                    resolvedName = resolvedSubjectName
+                    resolvedName = baseSubjectName
                 ) &&
                 !hasAfternoonOverride
 
@@ -294,7 +322,10 @@ object TimetableCalculator {
                 customLabel = slot.customLabel?.takeIf { it.isNotBlank() },
                 startTime = start,
                 endTime = end,
-                hideAfternoonTeacher = hideAfternoonTeacher
+                hideAfternoonTeacher = hideAfternoonTeacher,
+                rawPeriod = slot.period,
+                actualPeriod = actualPeriodNum,
+                baseSubjectName = baseSubjectName
             )
         }.sortedWith(
             compareBy<ResolvedPeriod>(
@@ -658,8 +689,8 @@ object TimetableCalculator {
 
         // Breakdown by Subject
         val subjectsById = subjects.associateBy { it.id }
-        val weekBySubject = selectedWeekPeriods.groupBy { it.subjectName }
-        val yearBySubject = yearResolved.groupBy { it.subjectName }
+        val weekBySubject = selectedWeekPeriods.groupBy { it.baseSubjectName }
+        val yearBySubject = yearResolved.groupBy { it.baseSubjectName }
         val assignedBySubjectLabel = mutableMapOf<String, Int>()
         for (a in effectiveAssignments) {
             val sub = subjectsById[a.subjectId]
@@ -746,8 +777,8 @@ object TimetableCalculator {
                 val sameSubject = candidate.mainSubject.isNotBlank() && (
                     (requesterTeacher?.mainSubject?.isNotBlank() == true &&
                         candidate.mainSubject.equals(requesterTeacher.mainSubject, ignoreCase = true)) ||
-                        targetPeriod.subjectName.contains(candidate.mainSubject, ignoreCase = true) ||
-                        candidate.mainSubject.contains(targetPeriod.subjectName, ignoreCase = true)
+                        targetPeriod.baseSubjectName.contains(candidate.mainSubject, ignoreCase = true) ||
+                        candidate.mainSubject.contains(targetPeriod.baseSubjectName, ignoreCase = true)
                     )
 
                 val directSwapSlot = candidateSlotsInTargetClass.firstOrNull { slot ->

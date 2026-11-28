@@ -143,7 +143,10 @@ data class ResolvedPeriod(
     val endTime: VnTime,
     val liveStatus: PeriodLiveStatus = PeriodLiveStatus.UPCOMING,
     val isChanged: Boolean = false,
-    val hideAfternoonTeacher: Boolean = false
+    val hideAfternoonTeacher: Boolean = false,
+    val rawPeriod: Int = period,
+    val actualPeriod: Int = period,
+    val baseSubjectName: String = subjectName
 ) {
     val isAfternoon: Boolean get() = session == "afternoon"
     val timeRangeText: String get() = "${startTime.formatHHmm()} – ${endTime.formatHHmm()}"

@@ -69,6 +69,7 @@ data class MainUiState(
     val teacherTodayPeriods: List<ResolvedPeriod> = emptyList(),
     val selectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
     val allSelectedWeekPeriods: List<ResolvedPeriod> = emptyList(),
+    val allSelectedWeekClassPeriods: List<ResolvedPeriod> = emptyList(),
     val selectedCycle: AfternoonMonthCycle = TimetableCalculator.getAfternoonMonthCycle(1),
     val selectedCycleAfternoonPeriods: List<ResolvedPeriod> = emptyList(),
     val allSelectedCycleAfternoonPeriods: List<ResolvedPeriod> = emptyList(),
@@ -346,7 +347,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 filterTeacherId = null,
                 filterClassId = null,
                 todayDate = if (selectedWeek == currentWeek && !isSundayPreview) today else null,
-                nowTime = if (selectedWeek == currentWeek && !isSundayPreview) now else null
+                nowTime = if (selectedWeek == currentWeek && !isSundayPreview) now else null,
+                forClassView = false
+            )
+        } else {
+            emptyList()
+        }
+
+        val allSelectedWeekClassResolved = if (currentTeacher != null) {
+            TimetableCalculator.resolveWeekPeriods(
+                weekNumber = selectedWeek,
+                rawSlots = selectedWeekSlots,
+                schoolConfig = catalog.config,
+                weekInfo = selectedWeekInfo,
+                deletedSlotKeys = catalog.deletedKeys,
+                teachers = catalog.teachers,
+                classes = catalog.classes,
+                subjects = catalog.subjects,
+                assignments = catalog.assignments,
+                filterTeacherId = null,
+                filterClassId = null,
+                todayDate = if (selectedWeek == currentWeek && !isSundayPreview) today else null,
+                nowTime = if (selectedWeek == currentWeek && !isSundayPreview) now else null,
+                forClassView = true
             )
         } else {
             emptyList()
@@ -532,6 +555,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             teacherTodayPeriods = teacherTodayPeriods,
             selectedWeekPeriods = selectedWeekResolved,
             allSelectedWeekPeriods = allSelectedWeekResolved,
+            allSelectedWeekClassPeriods = allSelectedWeekClassResolved,
             selectedCycle = selectedCycle,
             selectedCycleAfternoonPeriods = selectedCycleAfternoonResolved,
             allSelectedCycleAfternoonPeriods = allSelectedCycleAfternoonResolved,

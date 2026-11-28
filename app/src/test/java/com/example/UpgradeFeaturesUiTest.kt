@@ -1,5 +1,6 @@
 package com.example
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
@@ -676,5 +677,93 @@ class UpgradeFeaturesUiTest {
         composeRule.onNodeWithTag("swap_suggestion_t2").assertIsDisplayed()
         composeRule.onNodeWithTag("swap_suggestion_t3").assertIsDisplayed()
         composeRule.onNodeWithTag("swap_suggestion_t4").assertIsDisplayed()
+    }
+
+    @Test
+    fun classTimetable_showsActualPeriodNumbersInMatrixAndLookupTab() {
+        val gdtcRow1 = com.example.domain.model.ResolvedPeriod(
+            slotId = "m1",
+            week = 12,
+            day = "T2",
+            period = 1,
+            session = "morning",
+            classId = "6A1",
+            className = "6A1",
+            subjectId = "sub-gdtc",
+            subjectName = "GDTC 2",
+            subjectShort = "GDTC 2",
+            teacherId = "t4",
+            teacherShortName = "Bắc",
+            room = "P101",
+            note = null,
+            customLabel = null,
+            startTime = com.example.domain.lunar.VnTime(7, 15),
+            endTime = com.example.domain.lunar.VnTime(8, 0),
+            rawPeriod = 1,
+            actualPeriod = 2,
+            baseSubjectName = "GDTC"
+        )
+        val hdtnRow3 = gdtcRow1.copy(
+            slotId = "m3",
+            period = 3,
+            subjectId = "sub-hdtn",
+            subjectName = "HĐTN 1",
+            subjectShort = "HĐTN 1",
+            teacherId = "t2",
+            teacherShortName = "Thúy",
+            startTime = com.example.domain.lunar.VnTime(8, 55),
+            endTime = com.example.domain.lunar.VnTime(9, 40),
+            rawPeriod = 3,
+            actualPeriod = 1,
+            baseSubjectName = "HĐTN"
+        )
+        val tinTeacherActual3 = gdtcRow1.copy(
+            slotId = "t_tin",
+            period = 3,
+            subjectId = "sub-tin",
+            subjectName = "Tin học",
+            subjectShort = "Tin học",
+            teacherId = "t1",
+            teacherShortName = "Hoa",
+            rawPeriod = 4,
+            actualPeriod = 3,
+            baseSubjectName = "Tin học"
+        )
+
+        val state = sampleUiState().copy(
+            preferences = sampleUiState().preferences.copy(showHomeroomClass = true),
+            homeroomClass = com.example.domain.model.SchoolClass(id = "6A1", name = "6A1", grade = 6),
+            allClasses = listOf(com.example.domain.model.SchoolClass(id = "6A1", name = "6A1", grade = 6)),
+            selectedWeekNumber = 12,
+            selectedWeekPeriods = listOf(gdtcRow1, hdtnRow3),
+            allSelectedWeekPeriods = listOf(tinTeacherActual3),
+            allSelectedWeekClassPeriods = listOf(gdtcRow1, hdtnRow3)
+        )
+
+        composeRule.setContent {
+            LhlTimetableTheme {
+                TimetableScreen(
+                    uiState = state,
+                    onSelectWeek = {},
+                    onToggleHomeroom = {},
+                    onSyncNow = {},
+                    onSaveLessonNote = { _, _ -> },
+                    onDeleteLessonNote = {},
+                    onNotify = {}
+                )
+            }
+        }
+
+        // Homeroom class matrix displays "GDTC 2" and "HĐTN 1"
+        composeRule.onNodeWithTag("timetable_mode_matrix").performClick()
+        composeRule.onNodeWithText("GDTC 2").assertIsDisplayed()
+        composeRule.onNodeWithText("HĐTN 1").assertIsDisplayed()
+
+        // Lookup sheet Tab "TKB Lớp" reads allSelectedWeekClassPeriods (not teacher-view allSelectedWeekPeriods)
+        composeRule.onNodeWithTag("timetable_lookup_button").performClick()
+        composeRule.onNodeWithTag("lookup_tab_class").performClick()
+        composeRule.onAllNodesWithText("GDTC 2").assertCountEquals(2)
+        composeRule.onAllNodesWithText("GDTC 2").onLast().assertIsDisplayed()
+        composeRule.onAllNodesWithText("HĐTN 1").onLast().assertIsDisplayed()
     }
 }

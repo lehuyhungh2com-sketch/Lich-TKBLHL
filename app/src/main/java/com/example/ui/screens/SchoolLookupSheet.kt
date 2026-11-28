@@ -239,9 +239,10 @@ private fun ClassTimetableLookupContent(
 ) {
     val classes = uiState.allClasses
     val selectedClass = classes.firstOrNull { it.id == selectedClassId } ?: classes.firstOrNull()
-    val classPeriods = remember(uiState.allSelectedWeekPeriods, selectedClass?.id) {
+    val sourceClassPeriods = uiState.allSelectedWeekClassPeriods.ifEmpty { uiState.allSelectedWeekPeriods }
+    val classPeriods = remember(sourceClassPeriods, selectedClass?.id) {
         if (selectedClass == null) emptyList()
-        else uiState.allSelectedWeekPeriods.filter { it.classId.equals(selectedClass.id, ignoreCase = true) }
+        else sourceClassPeriods.filter { it.classId.equals(selectedClass.id, ignoreCase = true) }
     }
 
     if (classes.isEmpty()) {

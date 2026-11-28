@@ -1950,7 +1950,7 @@ private fun MatrixCard(
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .width(78.dp)
+                                .width(88.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isToday) MaterialTheme.colorScheme.primary else Color.Transparent)
                                 .padding(vertical = 6.dp)
@@ -2013,9 +2013,9 @@ private fun MatrixCard(
                                 color = cellBg,
                                 border = cellBorder,
                                 modifier = Modifier
-                                    .width(78.dp)
+                                    .width(88.dp)
                                     .padding(horizontal = 2.dp)
-                                    .height(50.dp)
+                                    .heightIn(min = 54.dp)
                                     .then(
                                         if (match != null) {
                                             Modifier
@@ -2060,15 +2060,18 @@ private fun MatrixCard(
                                             Text(
                                                 text = if (showTeacher) match.subjectName else TimetableCalculator.compactClassName(match.className),
                                                 style = MaterialTheme.typography.labelMedium,
+                                                lineHeight = 14.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = if (isNow) EmeraldLive else MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
                                                 text = if (showTeacher) match.teacherShortName else match.subjectName,
                                                 fontSize = 10.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
